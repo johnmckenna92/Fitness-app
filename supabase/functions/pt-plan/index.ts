@@ -4,6 +4,7 @@ const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
 Deno.serve(async (req: Request) => {
@@ -25,7 +26,7 @@ Deno.serve(async (req: Request) => {
     if (!apiKey) {
       return new Response(
         JSON.stringify({ error: "GEMINI_API_KEY environment variable is not configured." }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
@@ -61,31 +62,39 @@ Respond ONLY with a valid, raw JSON object matching this exact structure:
 
     const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
 
-    const response = await fetch(geminiUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [
-          {
-            role: "user",
-            parts: [
-              { inlineData: { mimeType, data: cleanImage } },
-              { text: prompt },
-            ],
+    let response: Response;
+    try {
+      response = await fetch(geminiUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [
+            {
+              role: "user",
+              parts: [
+                { inlineData: { mimeType, data: cleanImage } },
+                { text: prompt },
+              ],
+            },
+          ],
+          generationConfig: {
+            responseMimeType: "application/json",
           },
-        ],
-        generationConfig: {
-          responseMimeType: "application/json",
-        },
-      }),
-    });
+        }),
+      });
+    } catch (fetchErr: any) {
+      return new Response(
+        JSON.stringify({ error: `Gemini Network Error: ${fetchErr.message}` }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     if (!response.ok) {
       const errorText = await response.text();
       console.error("Gemini API error:", response.status, errorText);
       return new Response(
-        JSON.stringify({ error: `AI provider error: ${response.statusText}` }),
-        { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ error: `AI provider error: ${errorText || response.statusText}` }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
@@ -95,7 +104,7 @@ Respond ONLY with a valid, raw JSON object matching this exact structure:
     if (!rawJson) {
       return new Response(
         JSON.stringify({ error: "Gemini returned empty response." }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
@@ -110,7 +119,8 @@ Respond ONLY with a valid, raw JSON object matching this exact structure:
     console.error("pt-plan error:", error);
     return new Response(
       JSON.stringify({ error: error.message || "Internal server error." }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 }
+      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
     );
   }
 });
+

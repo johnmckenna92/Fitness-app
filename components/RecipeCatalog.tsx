@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
+import { router } from "expo-router";
 import React, { memo } from "react";
 import {
   ActivityIndicator,
@@ -12,6 +13,7 @@ import {
   View,
 } from "react-native";
 import { Recipe } from "../types/database";
+import { getCombinedTotalTime, getMacrosPerServing } from "../utils/formatters";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const NUM_COLUMNS = 2;
@@ -36,59 +38,66 @@ const RecipeGridItem = memo(function RecipeGridItem({
   onAddToProtocol: (recipe: Recipe) => void;
 }) {
   const coverImage = (recipe.images && recipe.images.length > 0) ? recipe.images[0] : recipe.image_url;
+  const timeFormatted = getCombinedTotalTime(recipe.prep_time, recipe.cook_time, recipe.total_time);
+  const { calories, protein } = getMacrosPerServing(recipe);
 
   return (
     <View style={styles.card}>
-      <View style={styles.imageContainer}>
-        {coverImage ? (
-          <Image
-            source={{ uri: coverImage }}
-            style={styles.thumbnail}
-            contentFit="cover"
-            cachePolicy="memory-disk"
-            transition={150}
-          />
-        ) : (
-          <View style={styles.fallbackThumb}>
-            <Ionicons name="fast-food-outline" size={28} color="#475569" />
-          </View>
-        )}
+      <TouchableOpacity
+        activeOpacity={0.8}
+        onPress={() => router.push(`/recipe/${recipe.id}` as any)}
+      >
+        <View style={styles.imageContainer}>
+          {coverImage ? (
+            <Image
+              source={{ uri: coverImage }}
+              style={styles.thumbnail}
+              contentFit="cover"
+              cachePolicy="memory-disk"
+              transition={150}
+            />
+          ) : (
+            <View style={styles.fallbackThumb}>
+              <Ionicons name="fast-food-outline" size={28} color="#475569" />
+            </View>
+          )}
 
-        {Boolean(recipe.cook_time) && (
-          <View style={styles.cookTimeTag}>
-            <Ionicons name="time-outline" size={10} color="#f8fafc" />
-            <Text style={styles.cookTimeTagText}>
-              {recipe.cook_time.includes("m") ? recipe.cook_time : `${recipe.cook_time}m`}
-            </Text>
-          </View>
-        )}
-      </View>
-
-      <View style={styles.cardContent}>
-        <Text style={styles.title} numberOfLines={2}>
-          {recipe.title}
-        </Text>
-
-        <View style={styles.macroRow}>
-          <View style={styles.macroPill}>
-            <Text style={styles.macroVal}>{Math.round(recipe.calories || 0)}</Text>
-            <Text style={styles.macroLbl}>CAL</Text>
-          </View>
-          <View style={[styles.macroPill, styles.proteinPill]}>
-            <Text style={[styles.macroVal, styles.proteinVal]}>
-              {Math.round(recipe.protein || 0)}g
-            </Text>
-            <Text style={[styles.macroLbl, styles.proteinLbl]}>PRO</Text>
-          </View>
+          {Boolean(timeFormatted) && (
+            <View style={styles.cookTimeTag}>
+              <Ionicons name="time-outline" size={10} color="#f8fafc" />
+              <Text style={styles.cookTimeTagText}>{timeFormatted}</Text>
+            </View>
+          )}
         </View>
 
+        <View style={styles.cardContent}>
+          <Text style={styles.title} numberOfLines={2}>
+            {recipe.title}
+          </Text>
+
+          <View style={styles.macroRow}>
+            <View style={styles.macroPill}>
+              <Text style={styles.macroVal}>{calories}</Text>
+              <Text style={styles.macroLbl}>CAL / SERV</Text>
+            </View>
+            <View style={[styles.macroPill, styles.proteinPill]}>
+              <Text style={[styles.macroVal, styles.proteinVal]}>
+                {protein}g
+              </Text>
+              <Text style={[styles.macroLbl, styles.proteinLbl]}>PRO</Text>
+            </View>
+          </View>
+        </View>
+      </TouchableOpacity>
+
+      <View style={{ paddingHorizontal: 10, paddingBottom: 10 }}>
         <TouchableOpacity
           style={styles.actionBtn}
           activeOpacity={0.8}
           onPress={() => onAddToProtocol(recipe)}
         >
           <Ionicons name="add" size={14} color="#020617" />
-          <Text style={styles.actionBtnText}>PROTOCOL</Text>
+          <Text style={styles.actionBtnText}>Add to List</Text>
         </TouchableOpacity>
       </View>
     </View>

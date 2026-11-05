@@ -1,7 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
+import { router } from "expo-router";
 import React from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { Recipe } from "../types/database";
+import { getMacrosPerServing } from "../utils/formatters";
 
 interface RecipeCardProps {
   recipe: Recipe;
@@ -9,23 +11,29 @@ interface RecipeCardProps {
 }
 
 export function RecipeCard({ recipe, onAddToProtocol }: RecipeCardProps) {
+  const { calories, protein } = getMacrosPerServing(recipe);
+
   return (
     <View style={styles.card}>
-      <View style={styles.content}>
+      <TouchableOpacity
+        style={styles.content}
+        activeOpacity={0.7}
+        onPress={() => router.push(`/recipe/${recipe.id}` as any)}
+      >
         <Text style={styles.title} numberOfLines={2}>
           {recipe.title}
         </Text>
         <View style={styles.macroRow}>
           <View style={styles.macroPill}>
-            <Text style={styles.macroValue}>{recipe.calories}</Text>
-            <Text style={styles.macroLabel}>CALS</Text>
+            <Text style={styles.macroValue}>{calories}</Text>
+            <Text style={styles.macroLabel}>CAL / SERV</Text>
           </View>
           <View style={[styles.macroPill, styles.proteinPill]}>
-            <Text style={[styles.macroValue, styles.proteinValue]}>{recipe.protein}g</Text>
-            <Text style={[styles.macroLabel, styles.proteinLabel]}>PROTEIN</Text>
+            <Text style={[styles.macroValue, styles.proteinValue]}>{protein}g</Text>
+            <Text style={[styles.macroLabel, styles.proteinLabel]}>PRO</Text>
           </View>
         </View>
-      </View>
+      </TouchableOpacity>
 
       <TouchableOpacity
         style={styles.addButton}
@@ -33,7 +41,7 @@ export function RecipeCard({ recipe, onAddToProtocol }: RecipeCardProps) {
         onPress={() => onAddToProtocol(recipe)}
       >
         <Ionicons name="add" size={16} color="#020617" />
-        <Text style={styles.addButtonText}>ADD TO PROTOCOL</Text>
+        <Text style={styles.addButtonText}>Add to List</Text>
       </TouchableOpacity>
     </View>
   );

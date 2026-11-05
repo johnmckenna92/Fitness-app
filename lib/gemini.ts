@@ -99,16 +99,21 @@ export async function fixMyMeal(input: string): Promise<string> {
 }
 
 
+export interface AisleGroup {
+  aisle: string;
+  items: string[];
+}
+
 /**
  * Collates and sums weekly raw ingredients, normalizing them into standard
- * UK supermarket packet sizes using Supabase Edge Function 'supply-chain'.
+ * UK supermarket packet sizes grouped by aisle using Supabase Edge Function 'supply-chain'.
  *
  * @param rawIngredients - List of all raw ingredient strings from the weekly protocol.
- * @returns Array of standardized grocery items.
+ * @returns Array of grouped aisle objects with standardized grocery items.
  */
 export async function optimizeSupplyChain(
   rawIngredients: string[],
-): Promise<string[]> {
+): Promise<AisleGroup[]> {
   if (!rawIngredients || rawIngredients.length === 0) {
     return [];
   }
@@ -119,22 +124,35 @@ export async function optimizeSupplyChain(
     });
 
     if (error) {
-      throw new Error(error.message || "Failed to optimize protocol supply chain inventory.");
+      throw new Error(error.message || "Failed to organize grocery list items.");
     }
 
     if (Array.isArray(data)) {
-      return data.map((item: any) => String(item).trim()).filter(Boolean);
+      if (data.length > 0 && typeof data[0] === "object" && data[0] !== null && "aisle" in data[0]) {
+        return data.map((group: any) => ({
+          aisle: String(group.aisle || "General"),
+          items: Array.isArray(group.items) ? group.items.map((i: any) => String(i).trim()).filter(Boolean) : [],
+        }));
+      }
+
+      return [{
+        aisle: "General",
+        items: data.map((item: any) => String(item).trim()).filter(Boolean),
+      }];
     }
 
     if (data && Array.isArray(data.items)) {
-      return data.items.map((item: any) => String(item).trim()).filter(Boolean);
+      return [{
+        aisle: "General",
+        items: data.items.map((item: any) => String(item).trim()).filter(Boolean),
+      }];
     }
 
-    throw new Error("Invalid format received from supply chain optimizer.");
+    throw new Error("Invalid format received from grocery optimizer.");
   } catch (err: any) {
     console.error("Supabase Edge Function optimizeSupplyChain failed:", err);
     throw new Error(
-      err?.message || "Failed to optimize protocol supply chain inventory.",
+      err?.message || "Failed to organize grocery list items.",
     );
   }
 }

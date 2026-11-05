@@ -2,6 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { useCallback, useEffect, useState } from "react";
 import {
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -16,6 +17,7 @@ import {
 import { RecipeCatalog } from "../../components/RecipeCatalog";
 import { FilterState, RecipeFiltersModal } from "../../components/RecipeFiltersModal";
 import { RecipeSwipeDeck } from "../../components/RecipeSwipeDeck";
+import { getDailyTargets, useAuth } from "../../ctx/AuthContext";
 import {
   fetchRecipesCatalog,
   fetchSwipeDeck,
@@ -27,6 +29,17 @@ import { Recipe, UserPreferences } from "../../types/database";
 export const PROTOCOL_STORAGE_KEY = "@protocol_weekly_ingredients";
 
 type ViewMode = "catalog" | "swipe";
+
+const FILTER_CHIPS = [
+  { id: "high-protein", label: "High Protein", type: "tag", value: "high-protein" },
+  { id: "under-30", label: "Under 30 Mins", type: "under30" },
+  { id: "simplicity", label: "Fewest Ingredients", type: "simplicity" },
+  { id: "chicken", label: "Chicken", type: "tag", value: "chicken" },
+  { id: "beef", label: "Beef", type: "tag", value: "beef" },
+  { id: "low-carb", label: "Low Carb", type: "tag", value: "low-carb" },
+  { id: "keto", label: "Keto", type: "tag", value: "keto" },
+  { id: "vegetarian", label: "Vegetarian", type: "tag", value: "vegetarian" },
+];
 
 export default function RecipesCatalogScreen() {
   const insets = useSafeAreaInsets();
@@ -49,6 +62,9 @@ export default function RecipesCatalogScreen() {
   const [deck, setDeck] = useState<Recipe[]>([]);
   const [isDeckLoading, setIsDeckLoading] = useState(false);
   const [userPrefs, setUserPrefs] = useState<UserPreferences | null>(null);
+
+  const { profile } = useAuth();
+  const dailyTargets = getDailyTargets(profile, true);
 
   // Custom Alert State (Zero native OS alerts)
   const [alert, setAlert] = useState({ visible: false, title: "", message: "" });
@@ -79,18 +95,32 @@ export default function RecipesCatalogScreen() {
         });
       }
 
+      // Mathematical macro goal alignment (assumes 3 primary meals per day)
+      const targetMealCals = Math.round(dailyTargets.calories / 3);
+      const targetMealProtein = Math.round(dailyTargets.protein / 3);
+
+      const alignedRecipes = [...result.data].sort((a, b) => {
+        const aDiff =
+          Math.abs((a.calories || 0) - targetMealCals) * 0.4 +
+          Math.abs((a.protein || 0) - targetMealProtein) * 1.5;
+        const bDiff =
+          Math.abs((b.calories || 0) - targetMealCals) * 0.4 +
+          Math.abs((b.protein || 0) - targetMealProtein) * 1.5;
+        return aDiff - bDiff;
+      });
+
       if (resetPage) {
-        setRecipes(result.data);
+        setRecipes(alignedRecipes);
         setPage(0);
       } else {
-        setRecipes((prev) => [...prev, ...result.data]);
+        setRecipes((prev) => [...prev, ...alignedRecipes]);
       }
 
       setHasMore(result.hasMore);
       setIsLoading(false);
       setIsFetchingMore(false);
     },
-    [filters, page]
+    [filters, page, dailyTargets.calories, dailyTargets.protein]
   );
 
   useEffect(() => {
@@ -150,19 +180,9 @@ export default function RecipesCatalogScreen() {
 
   const handleAddToProtocol = async (recipe: Recipe) => {
     try {
-      let rawIngs: string[] = [];
-      if (Array.isArray(recipe.ingredients)) {
-        rawIngs = recipe.ingredients;
-      } else if (typeof (recipe.ingredients as any) === "string") {
-        try {
-          const parsed = JSON.parse(recipe.ingredients as any);
-          rawIngs = Array.isArray(parsed) ? parsed : [recipe.ingredients as any];
-        } catch {
-          rawIngs = (recipe.ingredients as any).split(",").map((s: string) => s.trim());
-        }
-      } else {
-        rawIngs = [`${recipe.title} ingredients`];
-      }
+      const rawIngs: string[] = (recipe.ingredients && recipe.ingredients.length > 0)
+        ? recipe.ingredients
+        : [`${recipe.title} ingredients`];
 
       const ex = await AsyncStorage.getItem(PROTOCOL_STORAGE_KEY);
       const curr: string[] = ex ? JSON.parse(ex) : [];
@@ -170,11 +190,11 @@ export default function RecipesCatalogScreen() {
 
       setAlert({
         visible: true,
-        title: "PROTOCOL COMMITTED",
-        message: `${recipe.title} ingredients synced to Supply Chain.`,
+        title: "ADDED TO LIST",
+        message: `${recipe.title} ingredients synced to Shopping List.`,
       });
     } catch {
-      setAlert({ visible: true, title: "STORAGE ERROR", message: "Failed to persist protocol." });
+      setAlert({ visible: true, title: "STORAGE ERROR", message: "Failed to persist to list." });
     }
   };
 
@@ -187,7 +207,7 @@ export default function RecipesCatalogScreen() {
             {mode === "swipe" ? "PREFERENCE ENGINE" : "DISCOVERY CATALOG"}
           </Text>
           <Text style={s.t}>
-            {mode === "swipe" ? "Swipe Protocol" : "Recipe Database"}
+            {mode === "swipe" ? "Meal Discovery" : "Recipe Database"}
           </Text>
         </View>
 
@@ -234,7 +254,7 @@ export default function RecipesCatalogScreen() {
         <View style={s.swipeContainer}>
           <View style={s.prefBar}>
             <View style={s.prefInfo}>
-              <Ionicons name="sparkles" size={14} color="#818cf8" />
+              <Ionicons name="flame" size={14} color="#818cf8" />
               <Text style={s.prefText}>
                 {userPrefs?.look_alike_dictionary?.totalSwiped || 0} swiped • Avg{" "}
                 {userPrefs?.look_alike_dictionary?.avgProtein || 0}g protein
@@ -252,13 +272,13 @@ export default function RecipesCatalogScreen() {
               <View style={s.emptyIconCircle}>
                 <Ionicons name="checkmark-done" size={32} color="#818cf8" />
               </View>
-              <Text style={s.emptyDeckTitle}>Protocol Horizon Reached</Text>
+              <Text style={s.emptyDeckTitle}>Discovery Horizon Reached</Text>
               <Text style={s.emptyDeckSub}>
                 Your culinary preferences have been mapped.
               </Text>
               <TouchableOpacity style={s.reloadDeckBtn} onPress={loadDeck}>
                 <Ionicons name="refresh" size={16} color="#020617" />
-                <Text style={s.reloadDeckText}>RELOAD SWIPE PROTOCOL</Text>
+                <Text style={s.reloadDeckText}>RELOAD DISCOVERY DECK</Text>
               </TouchableOpacity>
             </View>
           ) : (
@@ -277,27 +297,54 @@ export default function RecipesCatalogScreen() {
 
       {mode === "catalog" && (
         <>
-          {Boolean(
-            filters.selectedTag || filters.simplicitySort || filters.under30Mins
-          ) && (
-            <View style={s.pills}>
-              {Boolean(filters.selectedTag) && (
-                <View style={s.pill}>
-                  <Text style={s.pText}>{filters.selectedTag}</Text>
-                </View>
-              )}
-              {filters.simplicitySort && (
-                <View style={s.pill}>
-                  <Text style={s.pText}>Fewest Ings</Text>
-                </View>
-              )}
-              {filters.under30Mins && (
-                <View style={s.pill}>
-                  <Text style={s.pText}>&le; 30 Mins</Text>
-                </View>
-              )}
-            </View>
-          )}
+          <View style={s.chipBarContainer}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={s.chipScrollContent}
+            >
+              {FILTER_CHIPS.map((chip) => {
+                let isActive = false;
+                if (chip.type === "tag") {
+                  isActive = filters.selectedTag === chip.value;
+                } else if (chip.type === "under30") {
+                  isActive = filters.under30Mins;
+                } else if (chip.type === "simplicity") {
+                  isActive = filters.simplicitySort;
+                }
+
+                return (
+                  <TouchableOpacity
+                    key={chip.id}
+                    style={[s.filterChip, isActive && s.filterChipActive]}
+                    activeOpacity={0.7}
+                    onPress={() => {
+                      if (chip.type === "tag") {
+                        setFilters((prev) => ({
+                          ...prev,
+                          selectedTag: prev.selectedTag === chip.value ? null : chip.value!,
+                        }));
+                      } else if (chip.type === "under30") {
+                        setFilters((prev) => ({
+                          ...prev,
+                          under30Mins: !prev.under30Mins,
+                        }));
+                      } else if (chip.type === "simplicity") {
+                        setFilters((prev) => ({
+                          ...prev,
+                          simplicitySort: !prev.simplicitySort,
+                        }));
+                      }
+                    }}
+                  >
+                    <Text style={[s.filterChipText, isActive && s.filterChipTextActive]}>
+                      {chip.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
 
           {isLoading ? (
             <RecipeCatalogSkeleton count={8} />
@@ -431,6 +478,38 @@ const s = StyleSheet.create({
     fontSize: 11,
     fontWeight: "800",
     letterSpacing: 0.5,
+  },
+  chipBarContainer: {
+    borderBottomWidth: 1,
+    borderBottomColor: "#1e293b",
+    backgroundColor: "#020617",
+  },
+  chipScrollContent: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    gap: 8,
+    alignItems: "center",
+  },
+  filterChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 20,
+    backgroundColor: "#0f172a",
+    borderWidth: 1,
+    borderColor: "#1e293b",
+  },
+  filterChipActive: {
+    backgroundColor: "#818cf8",
+    borderColor: "#818cf8",
+  },
+  filterChipText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#94a3b8",
+    letterSpacing: 0.2,
+  },
+  filterChipTextActive: {
+    color: "#020617",
   },
   pills: {
     flexDirection: "row",

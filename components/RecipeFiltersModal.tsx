@@ -32,7 +32,7 @@ export function RecipeFiltersModal({ visible, filters, onClose, onApply, onReset
         <View style={s.sheet}>
           <View style={s.header}>
             <View>
-              <Text style={s.sub}>PROTOCOL PARAMETERS</Text>
+              <Text style={s.sub}>FILTER PARAMETERS</Text>
               <Text style={s.title}>Catalog Filters</Text>
             </View>
             <TouchableOpacity onPress={onClose}>

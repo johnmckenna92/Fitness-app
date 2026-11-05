@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
+import { router } from "expo-router";
 import React, { useRef } from "react";
 import {
   Animated,
@@ -10,7 +11,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { Recipe } from "../types/database";
+import { Recipe } from "../types/recipe";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const SWIPE_THRESHOLD = SCREEN_WIDTH * 0.3;
@@ -91,15 +92,9 @@ export function RecipeSwipeCard({
     extrapolate: "clamp",
   });
 
-  const rawTags: string[] = Array.isArray(recipe.tags)
-    ? recipe.tags.slice(0, 4)
-    : typeof recipe.tags === "string"
-    ? [recipe.tags]
-    : [];
-
-  const rawIngredients: string[] = Array.isArray(recipe.ingredients)
-    ? recipe.ingredients.slice(0, 5)
-    : [];
+  const rawTags: string[] = (recipe.tags || []).slice(0, 4);
+  const rawIngredients: string[] = (recipe.ingredients || []).slice(0, 5);
+  const heroImage = (recipe.images && recipe.images.length > 0) ? recipe.images[0] : recipe.image_url;
 
   const animatedStyle = isTopCard
     ? { transform: [{ translateX: pan.x }, { translateY: pan.y }, { rotate }] }
@@ -140,77 +135,83 @@ export function RecipeSwipeCard({
           <Text style={styles.dislikeBadgeText}>PASS</Text>
         </Animated.View>
 
-        <View style={styles.heroVisual}>
-          {(recipe.images?.[0] || recipe.image_url) ? (
-            <Image
-              source={{ uri: (recipe.images?.[0] || recipe.image_url)! }}
-              style={StyleSheet.absoluteFill}
-              contentFit="cover"
-              cachePolicy="memory-disk"
-              transition={150}
-            />
-          ) : (
-            <View style={styles.iconCircle}>
-              <Ionicons name="flame-outline" size={36} color="#818cf8" />
-            </View>
-          )}
-          <View style={styles.heroOverlay}>
-            <View style={styles.macroPillHeader}>
-              <Ionicons name="time-outline" size={14} color="#94a3b8" />
-              <Text style={styles.cookTimeText}>
-                {recipe.cook_time ? `${recipe.cook_time}` : "Fast"}
-              </Text>
-            </View>
-            <View style={styles.macroPillHeader}>
-              <Ionicons name="nutrition-outline" size={14} color="#818cf8" />
-              <Text style={[styles.cookTimeText, { color: "#818cf8", fontWeight: "700" }]}>
-                {rawIngredients.length} Ings
-              </Text>
-            </View>
-          </View>
-        </View>
-
-        <View style={styles.body}>
-          <Text style={styles.title} numberOfLines={2}>
-            {recipe.title}
-          </Text>
-
-          <View style={styles.macrosRow}>
-            <View style={styles.macroBox}>
-              <Text style={styles.macroVal}>{Math.round(recipe.calories || 0)}</Text>
-              <Text style={styles.macroLbl}>CALS</Text>
-            </View>
-            <View style={[styles.macroBox, styles.proteinBox]}>
-              <Text style={[styles.macroVal, styles.proteinVal]}>{Math.round(recipe.protein || 0)}g</Text>
-              <Text style={[styles.macroLbl, styles.proteinLbl]}>PROTEIN</Text>
-            </View>
-            <View style={styles.macroBox}>
-              <Text style={styles.macroVal}>{Math.round(recipe.carbs || 0)}g</Text>
-              <Text style={styles.macroLbl}>CARBS</Text>
-            </View>
-            <View style={styles.macroBox}>
-              <Text style={styles.macroVal}>{Math.round(recipe.fats || 0)}g</Text>
-              <Text style={styles.macroLbl}>FATS</Text>
+        <TouchableOpacity
+          activeOpacity={0.9}
+          onPress={() => router.push(`/recipe/${recipe.id}` as any)}
+          style={{ flex: 1 }}
+        >
+          <View style={styles.heroVisual}>
+            {heroImage ? (
+              <Image
+                source={{ uri: heroImage }}
+                style={StyleSheet.absoluteFill}
+                contentFit="cover"
+                cachePolicy="memory-disk"
+                transition={150}
+              />
+            ) : (
+              <View style={styles.iconCircle}>
+                <Ionicons name="flame-outline" size={36} color="#818cf8" />
+              </View>
+            )}
+            <View style={styles.heroOverlay}>
+              <View style={styles.macroPillHeader}>
+                <Ionicons name="time-outline" size={14} color="#94a3b8" />
+                <Text style={styles.cookTimeText}>
+                  {recipe.cook_time ? `${recipe.cook_time}` : "Fast"}
+                </Text>
+              </View>
+              <View style={styles.macroPillHeader}>
+                <Ionicons name="nutrition-outline" size={14} color="#818cf8" />
+                <Text style={[styles.cookTimeText, { color: "#818cf8", fontWeight: "700" }]}>
+                  {rawIngredients.length} Ings
+                </Text>
+              </View>
             </View>
           </View>
 
-          {rawTags.length > 0 && (
-            <View style={styles.tagsContainer}>
-              {rawTags.map((t, idx) => (
-                <View key={idx} style={styles.tag}>
-                  <Text style={styles.tagText}>#{t}</Text>
-                </View>
-              ))}
-            </View>
-          )}
-
-          <View style={styles.ingredientsBox}>
-            <Text style={styles.ingredientsTitle}>KEY INGREDIENTS</Text>
-            <Text style={styles.ingredientsList} numberOfLines={2}>
-              {rawIngredients.join(" • ") || "Whole-food ingredients"}
+          <View style={styles.body}>
+            <Text style={styles.title} numberOfLines={2}>
+              {recipe.title}
             </Text>
+
+            <View style={styles.macrosRow}>
+              <View style={styles.macroBox}>
+                <Text style={styles.macroVal}>{Math.round(recipe.calories || 0)}</Text>
+                <Text style={styles.macroLbl}>CALS</Text>
+              </View>
+              <View style={[styles.macroBox, styles.proteinBox]}>
+                <Text style={[styles.macroVal, styles.proteinVal]}>{Math.round(recipe.protein || 0)}g</Text>
+                <Text style={[styles.macroLbl, styles.proteinLbl]}>PROTEIN</Text>
+              </View>
+              <View style={styles.macroBox}>
+                <Text style={styles.macroVal}>{Math.round(recipe.carbs || 0)}g</Text>
+                <Text style={styles.macroLbl}>CARBS</Text>
+              </View>
+              <View style={styles.macroBox}>
+                <Text style={styles.macroVal}>{Math.round(recipe.fats || 0)}g</Text>
+                <Text style={styles.macroLbl}>FATS</Text>
+              </View>
+            </View>
+
+            {rawTags.length > 0 && (
+              <View style={styles.tagsContainer}>
+                {rawTags.map((t, idx) => (
+                  <View key={idx} style={styles.tag}>
+                    <Text style={styles.tagText}>#{t}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            <View style={styles.ingredientsBox}>
+              <Text style={styles.ingredientsTitle}>KEY INGREDIENTS</Text>
+              <Text style={styles.ingredientsList} numberOfLines={2}>
+                {rawIngredients.join(" • ") || "Whole-food ingredients"}
+              </Text>
+            </View>
           </View>
-        </View>
+        </TouchableOpacity>
 
         <View style={styles.actionsRow}>
           <TouchableOpacity

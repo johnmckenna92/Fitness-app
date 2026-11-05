@@ -27,14 +27,6 @@ export default function CommandCenterScreen() {
           <Text style={styles.headerSubtitle}>COMMAND CENTER</Text>
           <Text style={styles.headerTitle}>Discovery & Action</Text>
         </View>
-        <TouchableOpacity 
-          onPress={() => router.push("/(tabs)/profile" as any)} 
-          style={styles.profileBtn}
-          accessibilityLabel="Profile"
-          accessibilityRole="button"
-        >
-          <Ionicons name="person-circle-outline" size={34} color="#818cf8" />
-        </TouchableOpacity>
       </View>
 
       <ScrollView 
@@ -87,7 +79,7 @@ export default function CommandCenterScreen() {
           </View>
           <Text style={styles.heroTitle}>Ask your AI Coach</Text>
           <Text style={styles.heroSub}>
-            Real-time workout calibration, personalized nutrition recommendations, and rapid protocol answers.
+            Real-time workout calibration, personalized nutrition recommendations, and rapid meal guidance.
           </Text>
         </TouchableOpacity>
 
@@ -111,7 +103,7 @@ export default function CommandCenterScreen() {
             onPress={() => router.push("/fix-meal" as any)}
           >
             <View style={[styles.gridIconBox, styles.fixIconBox]}>
-              <Ionicons name="sparkles" size={28} color="#c084fc" />
+              <Ionicons name="restaurant" size={28} color="#c084fc" />
             </View>
             <Text style={styles.gridTitle}>Fix Meal</Text>
             <Text style={styles.gridSubtitle}>Macro Re-engineer</Text>

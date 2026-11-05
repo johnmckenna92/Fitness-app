@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { ActivityIndicator, View } from 'react-native';
-import { Stack, router, useSegments } from 'expo-router';
+import { Stack, router, useSegments, useRootNavigationState } from 'expo-router';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider, useAuth } from '../ctx/AuthContext';
 import { StatusBar } from 'expo-status-bar';
@@ -182,15 +182,17 @@ const toastConfig: ToastConfig = {
 };
 
 function RootLayoutNav() {
-  const { session, isLocked, isLoading } = useAuth();
+  const { session, profile, isLocked, isLoading } = useAuth();
   const segments = useSegments();
+  const rootNavigationState = useRootNavigationState();
 
   useEffect(() => {
-    if (isLoading) return;
+    if (isLoading || !rootNavigationState?.key) return;
 
     const rootSegment = segments[0];
     const inAuthGroup = rootSegment === 'auth';
     const isUpdatePassword = (inAuthGroup && segments[1] === 'update-password') || rootSegment === 'update-password';
+    const inOnboarding = rootSegment === 'onboarding';
 
     // 1. Kick unauthenticated users to login if not already in auth flow
     if (!session) {
@@ -208,7 +210,32 @@ function RootLayoutNav() {
       return;
     }
 
-    // 3. Authenticated users are routed to dashboard if actively trying to access auth screens
+    // 3. Post-Login Gatekeeper: Check Supabase profiles table for height, weight, and goals
+    // If height, weight, or goals are null/empty, FORCE redirect user to dedicated (onboarding) modal stack.
+    // They cannot view the main app tabs until this wizard is completed.
+    const isProfileIncomplete =
+      !profile ||
+      profile.height === null ||
+      profile.height === undefined ||
+      profile.weight === null ||
+      profile.weight === undefined ||
+      !profile.goals ||
+      (Array.isArray(profile.goals) && profile.goals.length === 0);
+
+    if (isProfileIncomplete) {
+      if (!inOnboarding && !isUpdatePassword) {
+        router.replace('/onboarding' as any);
+      }
+      return;
+    }
+
+    // 4. Completed onboarding but still inside onboarding flow -> redirect to tabs
+    if (inOnboarding) {
+      router.replace('/(tabs)');
+      return;
+    }
+
+    // 5. Authenticated users are routed to dashboard if actively trying to access auth screens
     if (inAuthGroup) {
       if (segments[1] === 'update-password') {
         return;
@@ -216,7 +243,13 @@ function RootLayoutNav() {
       router.replace('/(tabs)');
       return;
     }
-  }, [session, isLocked, isLoading, segments]);
+
+    // 6. Authenticated user with complete profile on root index -> redirect to tabs
+    if (!rootSegment || (rootSegment as string) === 'index') {
+      router.replace('/(tabs)');
+      return;
+    }
+  }, [session, profile, isLocked, isLoading, segments, rootNavigationState?.key]);
 
   if (isLoading) {
     return (
@@ -231,10 +264,19 @@ function RootLayoutNav() {
     <>
       <StatusBar style="light" />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#020617' } }}>
+        <Stack.Screen name="index" />
         <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="recipe/[id]" options={{ headerShown: false }} />
         <Stack.Screen name="auth" />
         <Stack.Screen name="update-password" />
-        <Stack.Screen name="onboarding" />
+        <Stack.Screen 
+          name="onboarding" 
+          options={{ 
+            presentation: 'fullScreenModal',
+            gestureEnabled: false,
+            headerShown: false,
+          }} 
+        />
         <Stack.Screen 
           name="lock" 
           options={{ 

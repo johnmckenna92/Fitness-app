@@ -17,6 +17,7 @@ import {
   View,
 } from "react-native";
 import Toast from "react-native-toast-message";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "../../ctx/AuthContext";
 import { validateImageSafety } from "../../lib/gemini";
 import { uploadAvatar } from "../../lib/storage";
@@ -574,11 +575,12 @@ export default function ProfileScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.screen}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-      keyboardVerticalOffset={Platform.OS === "ios" ? 20 : 0}
-    >
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#020617" }} edges={["top"]}>
+      <KeyboardAvoidingView
+        style={styles.screen}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 20 : 0}
+      >
       <ScrollView
         style={styles.container}
         contentContainerStyle={styles.content}
@@ -751,7 +753,7 @@ export default function ProfileScreen() {
         <View style={styles.card}>
           <View style={styles.cardHeader}>
             <View style={styles.cardTitleGroup}>
-              <Ionicons name="sparkles-outline" size={20} color="#818cf8" />
+              <Ionicons name="options-outline" size={20} color="#818cf8" />
               <Text style={styles.cardTitle}>Advanced Preferences</Text>
             </View>
             {isProUser ? (
@@ -928,7 +930,7 @@ export default function ProfileScreen() {
               activeOpacity={0.8}
             >
               <Ionicons
-                name="star"
+                name="arrow-forward"
                 size={16}
                 color="#020617"
                 style={styles.buttonIcon}
@@ -1148,6 +1150,7 @@ export default function ProfileScreen() {
         </View>
       </Modal>
     </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 

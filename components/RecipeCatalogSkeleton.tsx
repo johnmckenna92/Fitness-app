@@ -1,8 +1,14 @@
-import React, { useEffect, useRef } from "react";
-import { Animated, StyleSheet, View } from "react-native";
+import React, { useEffect, useState } from "react";
+import { Animated, Dimensions, StyleSheet, View } from "react-native";
+
+const { width: SCREEN_WIDTH } = Dimensions.get("window");
+const NUM_COLUMNS = 2;
+const CARD_GAP = 10;
+const TOTAL_PADDING = 32;
+const ITEM_WIDTH = (SCREEN_WIDTH - TOTAL_PADDING - CARD_GAP) / NUM_COLUMNS;
 
 export function RecipeCardSkeleton() {
-  const opacity = useRef(new Animated.Value(0.3)).current;
+  const [opacity] = useState(() => new Animated.Value(0.3));
 
   useEffect(() => {
     const pulse = Animated.loop(
@@ -25,13 +31,16 @@ export function RecipeCardSkeleton() {
 
   return (
     <View style={styles.card}>
-      <Animated.View style={[styles.titleLine, { opacity }]} />
-      <Animated.View style={[styles.titleLineShort, { opacity }]} />
-      <View style={styles.macroRow}>
-        <Animated.View style={[styles.pill, { opacity }]} />
-        <Animated.View style={[styles.pill, { opacity }]} />
+      <Animated.View style={[styles.imagePlaceholder, { opacity }]} />
+      <View style={styles.cardContent}>
+        <Animated.View style={[styles.titleLine, { opacity }]} />
+        <Animated.View style={[styles.titleLineShort, { opacity }]} />
+        <View style={styles.macroRow}>
+          <Animated.View style={[styles.pill, { opacity }]} />
+          <Animated.View style={[styles.pill, { opacity }]} />
+        </View>
+        <Animated.View style={[styles.button, { opacity }]} />
       </View>
-      <Animated.View style={[styles.button, { opacity }]} />
     </View>
   );
 }
@@ -47,7 +56,7 @@ export function RecipeCatalogSkeleton({ count = 8 }: { count?: number }) {
 }
 
 export function RecipeSwipeSkeleton() {
-  const opacity = useRef(new Animated.Value(0.3)).current;
+  const [opacity] = useState(() => new Animated.Value(0.3));
 
   useEffect(() => {
     const pulse = Animated.loop(
@@ -96,37 +105,45 @@ const styles = StyleSheet.create({
   grid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    padding: 6,
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingBottom: 24,
   },
   card: {
-    width: "47%",
-    margin: 6,
+    width: ITEM_WIDTH,
     backgroundColor: "#0f172a",
-    borderRadius: 12,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: "#1e293b",
-    padding: 12,
-    minHeight: 150,
-    justifyContent: "space-between",
+    marginBottom: 12,
+    overflow: "hidden",
+  },
+  imagePlaceholder: {
+    width: "100%",
+    height: 110,
+    backgroundColor: "#1e293b",
+  },
+  cardContent: {
+    padding: 10,
   },
   titleLine: {
-    height: 14,
+    height: 12,
     backgroundColor: "#1e293b",
     borderRadius: 4,
     width: "90%",
     marginBottom: 6,
   },
   titleLineShort: {
-    height: 14,
+    height: 12,
     backgroundColor: "#1e293b",
     borderRadius: 4,
     width: "60%",
-    marginBottom: 12,
+    marginBottom: 10,
   },
   macroRow: {
     flexDirection: "row",
     gap: 6,
-    marginBottom: 12,
+    marginBottom: 10,
   },
   pill: {
     flex: 1,
@@ -139,7 +156,7 @@ const styles = StyleSheet.create({
   button: {
     height: 30,
     backgroundColor: "#1e293b",
-    borderRadius: 6,
+    borderRadius: 8,
   },
   swipeContainer: {
     flex: 1,

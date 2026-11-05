@@ -11,7 +11,8 @@ import {
   View,
 } from "react-native";
 import { supabase } from "../lib/supabase";
-import { Recipe } from "../types/database";
+import { Recipe } from "../types/recipe";
+import { formatDuration, getMacrosPerServing } from "../utils/formatters";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const SWIPE_THRESHOLD = SCREEN_WIDTH * 0.28;
@@ -231,11 +232,9 @@ function CardContent({
   isBackground?: boolean;
 }) {
   const coverImage = (recipe.images && recipe.images.length > 0) ? recipe.images[0] : recipe.image_url;
-  const rawTags = Array.isArray(recipe.tags)
-    ? recipe.tags.slice(0, 3)
-    : typeof recipe.tags === "string"
-    ? [recipe.tags]
-    : [];
+  const rawTags = (recipe.tags || []).slice(0, 3);
+  const timeFormatted = formatDuration(recipe.cook_time);
+  const { calories, protein, carbs, fats } = getMacrosPerServing(recipe);
 
   return (
     <View style={styles.cardInner}>
@@ -271,12 +270,12 @@ function CardContent({
         <View style={styles.imageOverlay}>
           <View style={styles.timeBadge}>
             <Ionicons name="time-outline" size={13} color="#f8fafc" />
-            <Text style={styles.timeText}>{recipe.cook_time ? `${recipe.cook_time}` : "Quick"}</Text>
+            <Text style={styles.timeText}>{timeFormatted}</Text>
           </View>
           <View style={[styles.timeBadge, styles.proteinBadge]}>
             <Ionicons name="flame" size={13} color="#818cf8" />
             <Text style={[styles.timeText, { color: "#818cf8", fontWeight: "800" }]}>
-              {recipe.protein || 0}g PRO
+              {protein}g PRO
             </Text>
           </View>
         </View>
@@ -289,22 +288,22 @@ function CardContent({
 
         <View style={styles.macrosGrid}>
           <View style={styles.macroCol}>
-            <Text style={styles.macroNum}>{Math.round(recipe.calories || 0)}</Text>
-            <Text style={styles.macroName}>KCAL</Text>
+            <Text style={styles.macroNum}>{calories}</Text>
+            <Text style={styles.macroName}>KCAL/SERV</Text>
           </View>
           <View style={styles.macroDivider} />
           <View style={styles.macroCol}>
-            <Text style={[styles.macroNum, { color: "#818cf8" }]}>{Math.round(recipe.protein || 0)}g</Text>
+            <Text style={[styles.macroNum, { color: "#818cf8" }]}>{protein}g</Text>
             <Text style={[styles.macroName, { color: "#818cf8" }]}>PROTEIN</Text>
           </View>
           <View style={styles.macroDivider} />
           <View style={styles.macroCol}>
-            <Text style={styles.macroNum}>{Math.round(recipe.carbs || 0)}g</Text>
+            <Text style={styles.macroNum}>{carbs}g</Text>
             <Text style={styles.macroName}>CARBS</Text>
           </View>
           <View style={styles.macroDivider} />
           <View style={styles.macroCol}>
-            <Text style={styles.macroNum}>{Math.round(recipe.fats || 0)}g</Text>
+            <Text style={styles.macroNum}>{fats}g</Text>
             <Text style={styles.macroName}>FATS</Text>
           </View>
         </View>

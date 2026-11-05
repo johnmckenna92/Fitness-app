@@ -8,7 +8,9 @@ export default function OnboardingLayout() {
         contentStyle: { backgroundColor: "#020617" },
       }}
     >
+      <Stack.Screen name="index" />
       <Stack.Screen name="pt-plan" />
     </Stack>
   );
 }
+

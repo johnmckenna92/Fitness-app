@@ -3,6 +3,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { HeaderHeightContext } from "@react-navigation/elements";
 import { Stack } from "expo-router";
 import React, { useContext, useEffect, useRef, useState } from "react";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 function useHeaderHeight() {
   const headerHeight = useContext(HeaderHeightContext);
@@ -64,6 +65,7 @@ const INITIAL_MESSAGE: Message = {
 export default function ChatScreen() {
   const { profile } = useAuth();
   const headerHeight = useHeaderHeight();
+  const insets = useSafeAreaInsets();
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -195,8 +197,8 @@ export default function ChatScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={{ flex: 1 }}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      style={{ flex: 1, backgroundColor: "#020617" }}
+      behavior="padding"
       keyboardVerticalOffset={Platform.OS === "ios" ? headerHeight : 0}
     >
       <Stack.Screen
@@ -240,7 +242,12 @@ export default function ChatScreen() {
           }
         />
 
-        <View style={styles.inputContainer}>
+        <View
+          style={[
+            styles.inputContainer,
+            { paddingBottom: Math.max(insets.bottom, 12) },
+          ]}
+        >
           <TextInput
             style={styles.input}
             value={inputText}

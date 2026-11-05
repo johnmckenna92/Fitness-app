@@ -102,7 +102,29 @@ export async function fetchRecipesCatalog({
 }: RecipeCatalogParams): Promise<RecipeQueryResult> {
   try {
     const from = page * pageSize;
-    const to = from + pageSize - 1;
+
+    // Check count first or use safe range bounds to prevent 416 "Requested range not satisfiable"
+    let countQuery = supabase
+      .from("recipes")
+      .select("id", { count: "exact", head: true });
+
+    if (selectedTag && selectedTag.trim() !== "") {
+      countQuery = countQuery.filter("tags", "cs", JSON.stringify([selectedTag.trim()]));
+    }
+
+    const { count: totalCount, error: countError } = await countQuery;
+    if (countError) {
+      console.warn("[recipeService] Count check warning:", countError.message);
+    }
+
+    if (typeof totalCount === "number") {
+      if (from >= totalCount) {
+        return { data: [], error: null, hasMore: false };
+      }
+    }
+
+    const targetTo = from + pageSize - 1;
+    const safeTo = typeof totalCount === "number" ? Math.min(targetTo, totalCount - 1) : targetTo;
 
     let query = supabase
       .from("recipes")
@@ -122,11 +144,15 @@ export async function fetchRecipesCatalog({
       query = query.order("calories", { ascending: false });
     }
 
-    query = query.range(from, to);
+    query = query.range(from, safeTo);
 
     const { data, error, count } = await query;
 
     if (error) {
+      // If error is 416 Range Not Satisfiable, return empty array gracefully
+      if (error.code === "PGRST103" || error.message.includes("range not satisfiable")) {
+        return { data: [], error: null, hasMore: false };
+      }
       console.error("[recipeService] Supabase query failed:", error.message, error.details);
       return { data: [], error: error.message, hasMore: false };
     }
@@ -142,10 +168,32 @@ export async function fetchRecipesCatalog({
       });
     }
 
-    const hasMore = count ? from + rawList.length < count : rawList.length === pageSize;
+    // Dynamic weight sorting: Boost recipes matching user's Look-Alike preferences to the top
+    try {
+      const prefs = await getUserPreferences();
+      const preferredTags = prefs?.look_alike_dictionary?.preferredTags || prefs?.liked_tags || [];
+      if (preferredTags.length > 0 && !sortByProtein && !simplicitySort) {
+        const prefSet = new Set(preferredTags.map((t) => t.toLowerCase()));
+        recipes.sort((a, b) => {
+          const aTags = Array.isArray(a.tags) ? a.tags : [];
+          const bTags = Array.isArray(b.tags) ? b.tags : [];
+          const aScore = aTags.reduce((acc, t) => acc + (prefSet.has(t.toLowerCase()) ? 1 : 0), 0);
+          const bScore = bTags.reduce((acc, t) => acc + (prefSet.has(t.toLowerCase()) ? 1 : 0), 0);
+          return bScore - aScore;
+        });
+      }
+    } catch {
+      // In-memory weighting is non-blocking
+    }
+
+    const effectiveTotal = typeof totalCount === "number" ? totalCount : count;
+    const hasMore = effectiveTotal ? from + rawList.length < effectiveTotal : rawList.length === pageSize;
 
     return { data: recipes, error: null, hasMore };
   } catch (err: any) {
+    if (err?.message?.includes("range not satisfiable")) {
+      return { data: [], error: null, hasMore: false };
+    }
     console.error("[recipeService] Unexpected fetch error:", err);
     return { data: [], error: err?.message || "Failed to query recipe database.", hasMore: false };
   }
@@ -154,20 +202,27 @@ export async function fetchRecipesCatalog({
 
 /**
  * Fetch a deck of recipes for the Tinder-style Swipe Protocol.
- * Prioritizes recipes that the user hasn't swiped on yet.
+ * Swiping right must NOT filter recipes out. Only excluded disliked recipes.
  */
 export async function fetchSwipeDeck(limit: number = 20): Promise<Recipe[]> {
   try {
     const prefs = await getUserPreferences();
-    const excludedIds = [...prefs.liked_recipe_ids, ...prefs.disliked_recipe_ids];
+    // Swiping right does NOT filter those recipes out; only exclude explicitly disliked recipes
+    const excludedIds = [...(prefs.disliked_recipe_ids || [])];
 
-    const randomOffset = Math.floor(Math.random() * 500);
+    const { count: deckCount } = await supabase
+      .from("recipes")
+      .select("id", { count: "exact", head: true });
+
+    const totalAvailable = deckCount || 400;
+    const maxOffset = Math.max(0, totalAvailable - (limit + 30));
+    const randomOffset = maxOffset > 0 ? Math.floor(Math.random() * maxOffset) : 0;
 
     let query = supabase
       .from("recipes")
       .select(RECIPE_COLUMNS)
       .order("protein", { ascending: false })
-      .range(randomOffset, randomOffset + limit + 25);
+      .range(randomOffset, Math.min(randomOffset + limit + 25, totalAvailable - 1));
 
     const { data, error } = await query;
     if (error) {

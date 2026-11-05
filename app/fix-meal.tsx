@@ -111,7 +111,7 @@ export default function FixMealScreen() {
         <View style={styles.headerSection}>
           <View style={styles.titleRow}>
             <View style={styles.iconBadge}>
-              <Ionicons name="sparkles" size={20} color="#818cf8" />
+              <Ionicons name="restaurant" size={20} color="#818cf8" />
             </View>
             <Text style={styles.title}>Fix My Meal</Text>
             {isProUser ? (
@@ -213,7 +213,7 @@ export default function FixMealScreen() {
                 </>
               ) : (
                 <>
-                  <Ionicons name="sparkles" size={18} color="#020617" />
+                  <Ionicons name="restaurant" size={18} color="#020617" />
                   <Text style={styles.submitButtonText}>Fix My Meal</Text>
                 </>
               )}

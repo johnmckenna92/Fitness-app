@@ -17,6 +17,8 @@ export interface Profile {
   pt_notes: string | null;
   avatar_url?: string | null;
   goals?: string[] | null;
+  height?: number | null; // Standardized in cm
+  weight?: number | null; // Standardized in kg
   macro_variance?: number;
 }
 
