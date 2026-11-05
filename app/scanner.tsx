@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
-import { GoogleGenAI } from "@google/genai/web";
+import { supabase } from "../lib/supabase";
+import * as ImageManipulator from "expo-image-manipulator";
 import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
 import { useState } from "react";
@@ -8,19 +9,37 @@ import {
   Image,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
-import { useAuth } from "../../ctx/AuthContext";
+import Markdown from "react-native-markdown-display";
+import { useAuth, getDailyTargets } from "../ctx/AuthContext";
 
 export default function ScannerScreen() {
-  const { suppressLockForPicker, profile } = useAuth();
+  const auth = useAuth();
+  const { suppressLockForPicker, profile, isPro, isTrainingDay = true } = auth;
+  const userProfile = profile ?? { goals: [] as string[] };
+  const dailyTargets =
+    "dailyTargets" in auth && (auth as any).dailyTargets
+      ? (auth as any).dailyTargets
+      : getDailyTargets(profile, isTrainingDay);
   const [image, setImage] = useState<string | null>(null);
   const [base64Data, setBase64Data] = useState<string | null>(null);
   const [mimeType, setMimeType] = useState<string>("image/jpeg");
   const [analysis, setAnalysis] = useState<string | null>(null);
   const [isScanning, setIsScanning] = useState(false);
+  const [isDeepDive, setIsDeepDive] = useState(false);
+
+  const handleToggleDeepDive = (value: boolean) => {
+    if (!isPro) {
+      setIsDeepDive(false);
+      router.push("/pricing");
+      return;
+    }
+    setIsDeepDive(value);
+  };
 
   const pickImage = async (useCamera: boolean = false) => {
     // Suppress biometric lock before leaving the app context
@@ -30,8 +49,7 @@ export default function ScannerScreen() {
     const options: ImagePicker.ImagePickerOptions = {
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: false,
-      quality: 0.7,
-      base64: true,
+      quality: 0.5,
     };
 
     if (useCamera) {
@@ -41,15 +59,26 @@ export default function ScannerScreen() {
       result = await ImagePicker.launchImageLibraryAsync(options);
     }
 
-    if (!result.canceled && result.assets[0]) {
-      setImage(result.assets[0].uri);
-      setBase64Data(result.assets[0].base64 || null);
+    if (!result.canceled && result.assets && result.assets[0]) {
+      const asset = result.assets[0];
+      try {
+        const manipResult = await ImageManipulator.manipulateAsync(
+          asset.uri,
+          [{ resize: { width: 1200 } }],
+          {
+            compress: 0.7,
+            format: ImageManipulator.SaveFormat.JPEG,
+            base64: true,
+          }
+        );
 
-      const uriParts = result.assets[0].uri.split(".");
-      const fileType = uriParts[uriParts.length - 1].toLowerCase();
-      setMimeType(fileType === "png" ? "image/png" : "image/jpeg");
-
-      setAnalysis(null);
+        setImage(manipResult.uri);
+        setBase64Data(manipResult.base64 || null);
+        setMimeType("image/jpeg");
+        setAnalysis(null);
+      } catch (manipErr) {
+        console.error("Scanner image manipulation failed:", manipErr);
+      }
     }
   };
 
@@ -64,35 +93,45 @@ export default function ScannerScreen() {
     setIsScanning(true);
 
     try {
-      const ai = new GoogleGenAI({
-        apiKey: process.env.EXPO_PUBLIC_GEMINI_API_KEY || "",
-      });
-
-      const ptNotesSection = profile?.pt_notes?.trim()
-        ? `\n\nPersonal Trainer Rules & Plan Guidelines:\n"""\n${profile.pt_notes.trim()}\n"""\nIMPORTANT: Explicitly flag if the scanned food violates any of the uploaded PT rules (e.g., forbidden ingredients, allergens, or dietary restrictions).`
-        : "";
-
-      const prompt = `Analyze this food or nutrition label. 
-      The user's daily targets are: ${profile?.target_calories || 0} kcal, ${profile?.target_protein || 0}g protein, ${profile?.target_carbs || 0}g carbs, ${profile?.target_fats || 0}g fats.${ptNotesSection}
-      Please estimate the macros (Calories, Protein, Carbs, Fats) per typical serving and briefly state if this is a good fit for their targets. Format the response clearly.`;
-
-      const response = await ai.models.generateContent({
-        model: "gemini-3.8-flash",
-        contents: [
-          {
-            role: "user",
-            parts: [
-              { inlineData: { data: base64Data, mimeType } },
-              { text: prompt },
-            ],
+      const isDeepDiveActive = isDeepDive && isPro;
+      const { data, error } = await supabase.functions.invoke("ingredient-scanner", {
+        body: {
+          imageBase64: base64Data,
+          query: base64Data,
+          mimeType,
+          scanType: isDeepDiveActive ? "deep-dive" : "standard",
+          profile: userProfile,
+          telemetry: {
+            goals: userProfile.goals,
+            target_calories: profile?.target_calories || 0,
+            target_protein: profile?.target_protein || 0,
+            target_carbs: profile?.target_carbs || 0,
+            target_fats: profile?.target_fats || 0,
+            dailyTargets,
+            isTrainingDay,
+            isDeepDive,
+            isPro,
+            ptNotesSection: profile?.pt_notes?.trim() || "",
+            pt_notes: profile?.pt_notes || "",
           },
-        ],
+        },
       });
 
-      // FIX: The generated response.text is `string | undefined`, but state expects `string | null`.
-      // Coercing undefined to null with a fallback message to satisfy TypeScript.
+      if (error) {
+        throw new Error(error.message || "Failed to analyze food");
+      }
+
+      const resultText =
+        typeof data?.analysis === "string"
+          ? data.analysis
+          : typeof data?.markdown === "string"
+          ? data.markdown
+          : typeof data === "string"
+          ? data
+          : null;
+
       setAnalysis(
-        response.text || "Unable to generate analysis. Please try again.",
+        resultText || "Unable to generate analysis. Please try again."
       );
     } catch (error) {
       console.error("Analysis Error:", error);
@@ -102,44 +141,6 @@ export default function ScannerScreen() {
     }
   };
 
-  const isPro = profile?.subscription_status === "pro";
-
-  if (!isPro) {
-    return (
-      <ScrollView
-        style={styles.lockedContainer}
-        contentContainerStyle={styles.lockedContent}
-      >
-        <View style={styles.lockedCard}>
-          <View style={styles.lockIconContainer}>
-            <Ionicons name="lock-closed" size={44} color="#818cf8" />
-          </View>
-          <View style={styles.proBadge}>
-            <Text style={styles.proBadgeText}>PRO FEATURE</Text>
-          </View>
-          <Text style={styles.lockedTitle}>Unlock AI Diet Scanner</Text>
-          <Text style={styles.lockedSubtitle}>
-            Scan meals and nutrition labels in seconds with real-time AI macro
-            matching against your custom calorie and macronutrient targets.
-          </Text>
-          <TouchableOpacity
-            style={styles.unlockButton}
-            onPress={() => router.push("/pricing")}
-            activeOpacity={0.8}
-          >
-            <Ionicons
-              name="lock-open-outline"
-              size={20}
-              color="#020617"
-              style={{ marginRight: 8 }}
-            />
-            <Text style={styles.unlockButtonText}>Unlock Pro</Text>
-          </TouchableOpacity>
-        </View>
-      </ScrollView>
-    );
-  }
-
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.title}>AI Diet Scanner</Text>
@@ -147,6 +148,24 @@ export default function ScannerScreen() {
         Upload a food photo or nutrition label to check macros against your
         targets.
       </Text>
+
+      {/* Deep Dive Audit (Pro) Toggle */}
+      <View style={styles.deepDiveRow}>
+        <View style={styles.deepDiveTextContainer}>
+          <Text style={styles.deepDiveLabel}>Deep Dive Audit (Pro)</Text>
+          <Text style={styles.deepDiveDescription}>
+            Audit additives, emulsifiers, seed oils & protein quality
+          </Text>
+        </View>
+        <Switch
+          value={isDeepDive}
+          onValueChange={handleToggleDeepDive}
+          trackColor={{ false: "#334155", true: "#818cf8" }}
+          thumbColor={isDeepDive ? "#f8fafc" : "#94a3b8"}
+          ios_backgroundColor="#334155"
+          accessibilityLabel="Deep Dive Audit (Pro)"
+        />
+      </View>
 
       <View style={styles.buttonRow}>
         <TouchableOpacity
@@ -196,7 +215,13 @@ export default function ScannerScreen() {
         <>
           <View style={styles.resultsContainer}>
             <Text style={styles.resultsTitle}>Analysis Results</Text>
-            <Text style={styles.resultsText}>{analysis}</Text>
+            <ScrollView
+              style={styles.markdownScroll}
+              nestedScrollEnabled={true}
+              showsVerticalScrollIndicator={false}
+            >
+              <Markdown style={markdownStyles}>{analysis}</Markdown>
+            </ScrollView>
           </View>
 
           <TouchableOpacity
@@ -238,6 +263,31 @@ const styles = StyleSheet.create({
     color: "#94a3b8",
     marginBottom: 24,
     lineHeight: 22,
+  },
+  deepDiveRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#0f172a",
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#1e293b",
+    marginBottom: 16,
+  },
+  deepDiveTextContainer: {
+    flex: 1,
+    marginRight: 12,
+  },
+  deepDiveLabel: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "#f8fafc",
+    marginBottom: 2,
+  },
+  deepDiveDescription: {
+    fontSize: 13,
+    color: "#94a3b8",
   },
   buttonRow: {
     flexDirection: "row",
@@ -326,6 +376,9 @@ const styles = StyleSheet.create({
     color: "#94a3b8",
     lineHeight: 24,
   },
+  markdownScroll: {
+    maxHeight: 450,
+  },
   secondaryButton: {
     flexDirection: "row",
     backgroundColor: "#0f172a",
@@ -342,6 +395,12 @@ const styles = StyleSheet.create({
     color: "#f8fafc",
     fontSize: 16,
     fontWeight: "bold",
+  },
+  loadingContainer: {
+    flex: 1,
+    backgroundColor: "#020617",
+    justifyContent: "center",
+    alignItems: "center",
   },
   lockedContainer: {
     flex: 1,
@@ -417,5 +476,142 @@ const styles = StyleSheet.create({
     color: "#020617",
     fontSize: 16,
     fontWeight: "bold",
+  },
+});
+
+const markdownStyles = StyleSheet.create({
+  body: {
+    color: "#f8fafc",
+    backgroundColor: "#0f172a",
+    fontSize: 15,
+    lineHeight: 24,
+  },
+  heading1: {
+    color: "#818cf8",
+    fontSize: 22,
+    fontWeight: "bold",
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  heading2: {
+    color: "#38bdf8",
+    fontSize: 20,
+    fontWeight: "bold",
+    marginTop: 18,
+    marginBottom: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    backgroundColor: "#1e293b",
+    borderRadius: 8,
+    borderLeftWidth: 4,
+    borderLeftColor: "#38bdf8",
+    letterSpacing: 0.3,
+  },
+  heading3: {
+    color: "#818cf8",
+    fontSize: 16,
+    fontWeight: "600",
+    marginTop: 12,
+    marginBottom: 6,
+  },
+  paragraph: {
+    color: "#f8fafc",
+    marginTop: 4,
+    marginBottom: 8,
+    lineHeight: 22,
+  },
+  text: {
+    color: "#f8fafc",
+  },
+  strong: {
+    color: "#f8fafc",
+    fontWeight: "bold",
+  },
+  em: {
+    color: "#cbd5e1",
+    fontStyle: "italic",
+  },
+  bullet_list: {
+    marginVertical: 4,
+  },
+  bullet_list_icon: {
+    color: "#818cf8",
+    marginLeft: 4,
+    marginRight: 8,
+  },
+  bullet_list_content: {
+    flex: 1,
+    color: "#f8fafc",
+  },
+  ordered_list_icon: {
+    color: "#818cf8",
+    marginLeft: 4,
+    marginRight: 8,
+  },
+  list_item: {
+    flexDirection: "row",
+    justifyContent: "flex-start",
+    marginVertical: 2,
+  },
+  code_inline: {
+    backgroundColor: "#0f172a",
+    color: "#818cf8",
+    borderWidth: 1,
+    borderColor: "#1e293b",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  code_block: {
+    backgroundColor: "#0f172a",
+    borderColor: "#1e293b",
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 12,
+    color: "#f8fafc",
+  },
+  fence: {
+    backgroundColor: "#0f172a",
+    borderColor: "#1e293b",
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 12,
+    color: "#f8fafc",
+  },
+  blockquote: {
+    backgroundColor: "#0f172a",
+    borderLeftColor: "#818cf8",
+    borderLeftWidth: 4,
+    paddingHorizontal: 12,
+    marginVertical: 6,
+  },
+  hr: {
+    backgroundColor: "#1e293b",
+    height: 1,
+    marginVertical: 12,
+  },
+  table: {
+    borderColor: "#1e293b",
+    borderWidth: 1,
+    backgroundColor: "#0f172a",
+    borderRadius: 6,
+  },
+  tr: {
+    borderColor: "#1e293b",
+    borderBottomWidth: 1,
+    flexDirection: "row",
+  },
+  th: {
+    color: "#818cf8",
+    padding: 8,
+    fontWeight: "bold",
+  },
+  td: {
+    color: "#f8fafc",
+    padding: 8,
+  },
+  link: {
+    color: "#818cf8",
+    textDecorationLine: "underline",
   },
 });

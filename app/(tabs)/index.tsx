@@ -1,180 +1,121 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { useState } from "react";
-import {
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View
-} from "react-native";
+import React from "react";
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { getDailyTargets, useAuth } from "../../ctx/AuthContext";
 
-const SUPERMARKETS = ["All", "Aldi", "Tesco", "Sainsbury's"];
-
-const MOCK_RECIPES = [
-  {
-    id: 1,
-    title: "High-Protein Chicken Pasta",
-    store: "Aldi",
-    calories: 650,
-    protein: 45,
-    portions: 2,
-  },
-  {
-    id: 2,
-    title: "Greek Yoghurt & Berry Bowl",
-    store: "Tesco",
-    calories: 320,
-    protein: 25,
-    portions: 1,
-  },
-  {
-    id: 3,
-    title: "Lean Beef Mince Chilli",
-    store: "Sainsbury's",
-    calories: 580,
-    protein: 42,
-    portions: 4,
-  },
-];
-
-export default function MealsScreen() {
+export default function CommandCenterScreen() {
   const insets = useSafeAreaInsets();
-  const [activeFilter, setActiveFilter] = useState("All");
-  const [recipes, setRecipes] = useState(MOCK_RECIPES);
+  const { profile, isPro, isTrainingDay } = useAuth();
+  const isProUser = Boolean(isPro || profile?.is_pro || profile?.subscription_status === "pro");
 
-  const updatePortion = (id: number, delta: number) => {
-    setRecipes((current) =>
-      current.map((recipe) => {
-        if (recipe.id === id) {
-          const newPortions = Math.max(1, recipe.portions + delta);
-          return { ...recipe, portions: newPortions };
-        }
-        return recipe;
-      }),
-    );
+  const baseline = {
+    calories: profile?.target_calories || 2200,
+    protein: profile?.target_protein || 140,
+    carbs: profile?.target_carbs || 200,
+    fats: profile?.target_fats || 65,
   };
 
-  const filteredRecipes = recipes.filter(
-    (r) => activeFilter === "All" || r.store === activeFilter,
-  );
+  const targets = isProUser ? getDailyTargets(profile, isTrainingDay) : baseline;
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      {/* Header */}
+      {/* Top Header */}
       <View style={styles.header}>
         <View>
-          <Text style={styles.greeting}>Meal Planner</Text>
-          <Text style={styles.title}>AI Recipes</Text>
+          <Text style={styles.headerSubtitle}>COMMAND CENTER</Text>
+          <Text style={styles.headerTitle}>Discovery & Action</Text>
         </View>
-        <TouchableOpacity
-          onPress={() => router.push("/profile")}
-          style={styles.profileButton}
+        <TouchableOpacity 
+          onPress={() => router.push("/(tabs)/profile" as any)} 
+          style={styles.profileBtn}
+          accessibilityLabel="Profile"
+          accessibilityRole="button"
         >
-          <Ionicons name="person-circle-outline" size={36} color="#818cf8" />
+          <Ionicons name="person-circle-outline" size={34} color="#818cf8" />
         </TouchableOpacity>
       </View>
 
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
+      <ScrollView 
+        contentContainerStyle={styles.scroll} 
         showsVerticalScrollIndicator={false}
       >
-        {/* Macro Summary Progress (Mini) */}
-        <View style={styles.macroSummaryCard}>
-          <View style={styles.macroStat}>
-            <Text style={styles.macroLabel}>Protein Target</Text>
-            <Text style={styles.macroValue}>
-              140g <Text style={styles.macroSub}>/ day</Text>
-            </Text>
+        {/* 1. The Daily Blueprint (Static Targets, Clean & Tracker-Free) */}
+        <View style={styles.blueprintCard}>
+          <View style={styles.blueprintHeaderRow}>
+            <Text style={styles.blueprintBadge}>DAILY BLUEPRINT</Text>
+            {isProUser && (
+              <View style={styles.proPill}>
+                <Text style={styles.proPillText}>{isTrainingDay ? "TRAINING" : "REST"}</Text>
+              </View>
+            )}
           </View>
-          <View style={styles.verticalDivider} />
-          <View style={styles.macroStat}>
-            <Text style={styles.macroLabel}>Calorie Target</Text>
-            <Text style={styles.macroValue}>
-              2200 <Text style={styles.macroSub}>kcal</Text>
+          <View style={styles.targetRow}>
+            <Text style={styles.targetIcon}>🎯</Text>
+            <Text style={styles.targetText}>
+              {targets.calories} kcal
+            </Text>
+            <Text style={styles.targetDivider}>|</Text>
+            <Text style={styles.targetText}>
+              {targets.protein}g P
+            </Text>
+            <Text style={styles.targetDivider}>|</Text>
+            <Text style={styles.targetText}>
+              {targets.carbs}g C
+            </Text>
+            <Text style={styles.targetDivider}>|</Text>
+            <Text style={styles.targetText}>
+              {targets.fats}g F
             </Text>
           </View>
         </View>
 
-        {/* Action Button: Generate Grocery List */}
-        <TouchableOpacity style={styles.generateListButton}>
-          <Ionicons name="cart-outline" size={20} color="#ffffff" />
-          <Text style={styles.generateListText}>Generate UK Grocery List</Text>
+        {/* 2. AI Coach Hero Widget */}
+        <TouchableOpacity 
+          style={styles.heroCard}
+          activeOpacity={0.85}
+          onPress={() => router.push("/chat" as any)}
+        >
+          <View style={styles.heroTopRow}>
+            <View style={styles.heroIconBox}>
+              <Ionicons name="chatbubbles" size={32} color="#818cf8" />
+            </View>
+            <View style={styles.heroArrowBox}>
+              <Ionicons name="arrow-forward" size={18} color="#818cf8" />
+            </View>
+          </View>
+          <Text style={styles.heroTitle}>Ask your AI Coach</Text>
+          <Text style={styles.heroSub}>
+            Real-time workout calibration, personalized nutrition recommendations, and rapid protocol answers.
+          </Text>
         </TouchableOpacity>
 
-        {/* Supermarket Filters */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.filterContainer}
-          contentContainerStyle={styles.filterContent}
-        >
-          {SUPERMARKETS.map((store) => (
-            <TouchableOpacity
-              key={store}
-              style={[
-                styles.filterPill,
-                activeFilter === store && styles.filterPillActive,
-              ]}
-              onPress={() => setActiveFilter(store)}
-            >
-              <Text
-                style={[
-                  styles.filterPillText,
-                  activeFilter === store && styles.filterPillTextActive,
-                ]}
-              >
-                {store}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-
-        {/* Recipe Feed */}
-        <View style={styles.recipeFeed}>
-          {filteredRecipes.map((recipe) => (
-            <View key={recipe.id} style={styles.recipeCard}>
-              <View style={styles.recipeHeader}>
-                <Text style={styles.recipeStore}>{recipe.store}</Text>
-                <TouchableOpacity>
-                  <Ionicons name="bookmark-outline" size={20} color="#94a3b8" />
-                </TouchableOpacity>
-              </View>
-
-              <Text style={styles.recipeTitle}>{recipe.title}</Text>
-
-              <View style={styles.recipeMeta}>
-                <View style={styles.tag}>
-                  <Ionicons name="flame-outline" size={14} color="#f8fafc" />
-                  <Text style={styles.tagText}>{recipe.calories} kcal</Text>
-                </View>
-                <View style={styles.tag}>
-                  <Ionicons name="barbell-outline" size={14} color="#f8fafc" />
-                  <Text style={styles.tagText}>{recipe.protein}g protein</Text>
-                </View>
-              </View>
-
-              <View style={styles.recipeFooter}>
-                <Text style={styles.portionLabel}>Portions</Text>
-                <View style={styles.portionControls}>
-                  <TouchableOpacity
-                    onPress={() => updatePortion(recipe.id, -1)}
-                    style={styles.portionBtn}
-                  >
-                    <Ionicons name="remove" size={18} color="#f8fafc" />
-                  </TouchableOpacity>
-                  <Text style={styles.portionText}>{recipe.portions}</Text>
-                  <TouchableOpacity
-                    onPress={() => updatePortion(recipe.id, 1)}
-                    style={styles.portionBtn}
-                  >
-                    <Ionicons name="add" size={18} color="#f8fafc" />
-                  </TouchableOpacity>
-                </View>
-              </View>
+        {/* 3. The Tool Grid (Spacious 2-column flex grid for secondary tools) */}
+        <View style={styles.gridContainer}>
+          <TouchableOpacity 
+            style={styles.gridCard}
+            activeOpacity={0.85}
+            onPress={() => router.push("/scanner" as any)}
+          >
+            <View style={[styles.gridIconBox, styles.scannerIconBox]}>
+              <Ionicons name="scan" size={30} color="#38bdf8" />
             </View>
-          ))}
+            <Text style={styles.gridTitle}>Ingredient Scanner</Text>
+            <Text style={styles.gridSubtitle}>AI Vision Analysis</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={styles.gridCard}
+            activeOpacity={0.85}
+            onPress={() => router.push("/fix-meal" as any)}
+          >
+            <View style={[styles.gridIconBox, styles.fixIconBox]}>
+              <Ionicons name="sparkles" size={28} color="#c084fc" />
+            </View>
+            <Text style={styles.gridTitle}>Fix Meal</Text>
+            <Text style={styles.gridSubtitle}>Macro Re-engineer</Text>
+          </TouchableOpacity>
         </View>
       </ScrollView>
     </View>
@@ -182,129 +123,180 @@ export default function MealsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#020617" },
+  container: { 
+    flex: 1, 
+    backgroundColor: "#020617",
+  },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: 20,
-    paddingBottom: 16,
+    paddingHorizontal: 24,
+    paddingTop: 16,
+    paddingBottom: 20,
   },
-  greeting: { color: "#94a3b8", fontSize: 16 },
-  title: { color: "#f8fafc", fontSize: 28, fontWeight: "bold", marginTop: 4 },
-  profileButton: { padding: 4 },
-  scrollContent: { paddingBottom: 40 },
-  macroSummaryCard: {
-    flexDirection: "row",
-    backgroundColor: "#0f172a",
-    marginHorizontal: 20,
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: "#1e293b",
-    marginBottom: 16,
+  headerSubtitle: { 
+    fontSize: 11, 
+    fontWeight: "800", 
+    color: "#818cf8", 
+    letterSpacing: 1.5,
   },
-  macroStat: { flex: 1, alignItems: "center" },
-  verticalDivider: {
-    width: 1,
+  headerTitle: { 
+    fontSize: 26, 
+    fontWeight: "800", 
+    color: "#f8fafc",
+    marginTop: 4,
+    letterSpacing: -0.5,
+  },
+  profileBtn: { 
+    padding: 4,
+  },
+  scroll: { 
+    paddingHorizontal: 24,
+    paddingTop: 8,
+    gap: 20,
+    paddingBottom: 48,
+  },
+  blueprintCard: {
     backgroundColor: "#1e293b",
-    marginHorizontal: 16,
+    borderRadius: 24,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: "#334155",
   },
-  macroLabel: {
+  blueprintHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 14,
+  },
+  blueprintBadge: {
+    fontSize: 11,
+    fontWeight: "800",
     color: "#94a3b8",
-    fontSize: 12,
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
+    letterSpacing: 1.2,
+  },
+  proPill: {
+    backgroundColor: "#020617",
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#818cf8",
+  },
+  proPillText: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: "#818cf8",
+    letterSpacing: 0.8,
+  },
+  targetRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  targetIcon: {
+    fontSize: 16,
+    marginRight: 2,
+  },
+  targetText: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#f8fafc",
+    letterSpacing: 0.2,
+  },
+  targetDivider: {
+    fontSize: 14,
+    fontWeight: "400",
+    color: "#475569",
+  },
+  heroCard: {
+    backgroundColor: "#1e293b",
+    borderRadius: 24,
+    padding: 28,
+    borderWidth: 1,
+    borderColor: "#334155",
+  },
+  heroTopRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: 20,
+  },
+  heroIconBox: {
+    width: 64,
+    height: 64,
+    borderRadius: 20,
+    backgroundColor: "#020617",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(129, 140, 248, 0.4)",
+  },
+  heroArrowBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#020617",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#334155",
+  },
+  heroTitle: {
+    fontSize: 22,
+    fontWeight: "800",
+    color: "#f8fafc",
+    marginBottom: 8,
+    letterSpacing: -0.3,
+  },
+  heroSub: {
+    fontSize: 14,
+    color: "#94a3b8",
+    lineHeight: 22,
+    fontWeight: "400",
+  },
+  gridContainer: {
+    flexDirection: "row",
+    gap: 20,
+  },
+  gridCard: {
+    flex: 1,
+    backgroundColor: "#1e293b",
+    borderRadius: 24,
+    padding: 22,
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    minHeight: 160,
+    borderWidth: 1,
+    borderColor: "#334155",
+  },
+  gridIconBox: {
+    width: 52,
+    height: 52,
+    borderRadius: 18,
+    backgroundColor: "#020617",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 20,
+    borderWidth: 1,
+  },
+  scannerIconBox: {
+    borderColor: "rgba(56, 189, 248, 0.3)",
+  },
+  fixIconBox: {
+    borderColor: "rgba(192, 132, 252, 0.3)",
+  },
+  gridTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#f8fafc",
     marginBottom: 4,
   },
-  macroValue: { color: "#818cf8", fontSize: 20, fontWeight: "bold" },
-  macroSub: { fontSize: 14, color: "#64748b", fontWeight: "normal" },
-  generateListButton: {
-    flexDirection: "row",
-    backgroundColor: "#818cf8",
-    marginHorizontal: 20,
-    padding: 16,
-    borderRadius: 12,
-    justifyContent: "center",
-    alignItems: "center",
-    gap: 8,
-    marginBottom: 24,
-  },
-  generateListText: { color: "#ffffff", fontSize: 16, fontWeight: "bold" },
-  filterContainer: { flexGrow: 0, marginBottom: 20 },
-  filterContent: { paddingHorizontal: 20, gap: 12 },
-  filterPill: {
-    backgroundColor: "#0f172a",
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: "#1e293b",
-  },
-  filterPillActive: { backgroundColor: "#818cf8", borderColor: "#818cf8" },
-  filterPillText: { color: "#94a3b8", fontSize: 14, fontWeight: "600" },
-  filterPillTextActive: { color: "#ffffff" },
-  recipeFeed: { paddingHorizontal: 20, gap: 16 },
-  recipeCard: {
-    backgroundColor: "#0f172a",
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: "#1e293b",
-  },
-  recipeHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  recipeStore: {
-    color: "#818cf8",
+  gridSubtitle: {
     fontSize: 12,
-    fontWeight: "bold",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-  recipeTitle: {
-    color: "#f8fafc",
-    fontSize: 18,
-    fontWeight: "bold",
-    marginBottom: 12,
-  },
-  recipeMeta: { flexDirection: "row", gap: 12, marginBottom: 16 },
-  tag: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#1e293b",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    gap: 4,
-  },
-  tagText: { color: "#f8fafc", fontSize: 12, fontWeight: "500" },
-  recipeFooter: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    borderTopWidth: 1,
-    borderTopColor: "#1e293b",
-    paddingTop: 12,
-  },
-  portionLabel: { color: "#94a3b8", fontSize: 14, fontWeight: "500" },
-  portionControls: { flexDirection: "row", alignItems: "center", gap: 16 },
-  portionBtn: {
-    backgroundColor: "#1e293b",
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  portionText: {
-    color: "#f8fafc",
-    fontSize: 16,
-    fontWeight: "bold",
-    minWidth: 20,
-    textAlign: "center",
+    fontWeight: "500",
+    color: "#64748b",
   },
 });

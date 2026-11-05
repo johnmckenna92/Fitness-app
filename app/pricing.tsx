@@ -3,13 +3,13 @@ import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
+import Toast from "react-native-toast-message";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../ctx/AuthContext";
 import { supabase } from "../lib/supabase";
@@ -53,16 +53,17 @@ const PRO_FEATURES = [
 function PricingScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { session, refreshProfile } = useAuth();
+  const { session, refreshProfile, checkProStatus } = useAuth();
   const [selectedPlan, setSelectedPlan] = useState("yearly");
   const [loading, setLoading] = useState(false);
 
   const handleSubscribe = async () => {
     if (!session?.user?.id) {
-      Alert.alert(
-        "Authentication Required",
-        "Please log in to upgrade your subscription."
-      );
+      Toast.show({
+        type: "error",
+        text1: "Authentication Required",
+        text2: "Please log in to upgrade your subscription.",
+      });
       return;
     }
 
@@ -70,14 +71,20 @@ function PricingScreen() {
       setLoading(true);
       const { error } = await supabase
         .from("profiles")
-        .update({ subscription_status: "pro" })
+        .update({ subscription_status: "pro", is_pro: true })
         .eq("id", session.user.id);
 
       if (error) {
         throw error;
       }
 
-      await refreshProfile();
+      await Promise.all([checkProStatus(), refreshProfile()]);
+
+      Toast.show({
+        type: "success",
+        text1: "Upgrade Successful",
+        text2: "Welcome to Pro! You now have full access to all features.",
+      });
 
       if (router.canDismiss()) {
         router.dismiss();
@@ -85,10 +92,13 @@ function PricingScreen() {
         router.back();
       }
     } catch (error: any) {
-      Alert.alert(
-        "Subscription Failed",
-        error?.message || "An error occurred while upgrading to Pro. Please try again."
-      );
+      Toast.show({
+        type: "error",
+        text1: "Subscription Failed",
+        text2:
+          error?.message ||
+          "An error occurred while upgrading to Pro. Please try again.",
+      });
     } finally {
       setLoading(false);
     }

@@ -1,696 +1,456 @@
 import { Ionicons } from "@expo/vector-icons";
-import { GoogleGenAI } from "@google/genai/web";
-import React, { useState } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import React, { useCallback, useEffect, useState } from "react";
 import {
-  ActivityIndicator,
-  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
-import { useAuth } from "../../ctx/AuthContext";
-import { supabase } from "../../lib/supabase";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { CustomAlert } from "../../components/CustomAlert";
+import {
+  RecipeCatalogSkeleton,
+  RecipeSwipeSkeleton,
+} from "../../components/RecipeCatalogSkeleton";
+import { RecipeCatalog } from "../../components/RecipeCatalog";
+import { FilterState, RecipeFiltersModal } from "../../components/RecipeFiltersModal";
+import { RecipeSwipeDeck } from "../../components/RecipeSwipeDeck";
+import {
+  fetchRecipesCatalog,
+  fetchSwipeDeck,
+  getUserPreferences,
+  recordRecipeSwipe,
+} from "../../services/recipeService";
+import { Recipe, UserPreferences } from "../../types/database";
 
-interface Recipe {
-  id: string;
-  title: string;
-  calories: number;
-  protein: number;
-  carbs: number;
-  fats: number;
-  badgeText: string;
-  badgeType: "success" | "warning";
-  description?: string;
-  ingredients?: string;
-  instructions?: string;
-}
+export const PROTOCOL_STORAGE_KEY = "@protocol_weekly_ingredients";
 
-export default function RecipesScreen() {
-  const { profile } = useAuth();
+type ViewMode = "catalog" | "swipe";
+
+export default function RecipesCatalogScreen() {
+  const insets = useSafeAreaInsets();
+  const [mode, setMode] = useState<ViewMode>("catalog");
+
+  // Catalog State
   const [recipes, setRecipes] = useState<Recipe[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isFetchingMore, setIsFetchingMore] = useState(false);
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [filters, setFilters] = useState<FilterState>({
+    selectedTag: null,
+    simplicitySort: false,
+    under30Mins: false,
+  });
 
-  const targetCalories = profile?.target_calories ?? 2000;
-  const targetProtein = profile?.target_protein ?? 150;
-  const targetCarbs = profile?.target_carbs ?? 200;
-  const targetFats = profile?.target_fats ?? 65;
+  // Swipe Protocol State
+  const [deck, setDeck] = useState<Recipe[]>([]);
+  const [isDeckLoading, setIsDeckLoading] = useState(false);
+  const [userPrefs, setUserPrefs] = useState<UserPreferences | null>(null);
 
-  const calMin = Math.round(targetCalories * 0.8);
-  const calMax = Math.round(targetCalories * 1.2);
-  const proteinMin = Math.round(targetProtein * 0.8);
-  const proteinMax = Math.round(targetProtein * 1.2);
-  const carbsMin = Math.round(targetCarbs * 0.8);
-  const carbsMax = Math.round(targetCarbs * 1.2);
-  const fatsMin = Math.round(targetFats * 0.8);
-  const fatsMax = Math.round(targetFats * 1.2);
+  // Custom Alert State (Zero native OS alerts)
+  const [alert, setAlert] = useState({ visible: false, title: "", message: "" });
 
-  const fetchAndFilterRecipes = async () => {
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      // 1. Fetch potential recipes from Supabase recipes table within +/- 20% range of user targets
-      const { data: dbData, error: dbError } = await supabase
-        .from("recipes")
-        .select("*")
-        .gte("calories", calMin)
-        .lte("calories", calMax)
-        .gte("protein", proteinMin)
-        .lte("protein", proteinMax)
-        .gte("carbs", carbsMin)
-        .lte("carbs", carbsMax)
-        .gte("fats", fatsMin)
-        .lte("fats", fatsMax);
-
-      if (dbError) {
-        console.error("Supabase recipes fetch error:", dbError);
-        throw new Error(dbError.message || "Failed to fetch recipes from database.");
+  // 1. Hydrate Catalog
+  const loadCatalog = useCallback(
+    async (resetPage = false) => {
+      const targetPage = resetPage ? 0 : page;
+      if (resetPage) {
+        setIsLoading(true);
+      } else {
+        setIsFetchingMore(true);
       }
 
-      let candidateRecipes = dbData || [];
-
-      // Fallback: If user targets are daily and no whole-day recipes matched, check per-meal targets
-      if (
-        candidateRecipes.length === 0 &&
-        profile?.meals_per_day &&
-        profile.meals_per_day > 1
-      ) {
-        const mealCal = Math.round(targetCalories / profile.meals_per_day);
-        const mealProtein = Math.round(targetProtein / profile.meals_per_day);
-        const mealCarbs = Math.round(targetCarbs / profile.meals_per_day);
-        const mealFats = Math.round(targetFats / profile.meals_per_day);
-
-        const { data: mealData, error: mealError } = await supabase
-          .from("recipes")
-          .select("*")
-          .gte("calories", Math.round(mealCal * 0.8))
-          .lte("calories", Math.round(mealCal * 1.2))
-          .gte("protein", Math.round(mealProtein * 0.8))
-          .lte("protein", Math.round(mealProtein * 1.2))
-          .gte("carbs", Math.round(mealCarbs * 0.8))
-          .lte("carbs", Math.round(mealCarbs * 1.2))
-          .gte("fats", Math.round(mealFats * 0.8))
-          .lte("fats", Math.round(mealFats * 1.2));
-
-        if (!mealError && mealData && mealData.length > 0) {
-          candidateRecipes = mealData;
-        }
-      }
-
-      // If no recipes matched the +/- 20% range, inform the user without hallucinating
-      if (candidateRecipes.length === 0) {
-        setRecipes([]);
-        setError(
-          "No recipes found in the database within +/- 20% of your macro targets. Adjust your target macros or check back later."
-        );
-        return;
-      }
-
-      // 2. Pass fetched recipes AND pt_notes to GoogleGenAI as strict dietary filter
-      const ai = new GoogleGenAI({
-        apiKey:
-          process.env.EXPO_PUBLIC_GEMINI_API_KEY ||
-          process.env.GEMINI_API_KEY ||
-          "",
+      const result = await fetchRecipesCatalog({
+        selectedTag: filters.selectedTag,
+        under30Mins: filters.under30Mins,
+        simplicitySort: filters.simplicitySort,
+        page: targetPage,
+        pageSize: 30,
       });
 
-      const ptNotes =
-        profile?.pt_notes?.trim() ||
-        "No specific dietary restrictions or forbidden ingredients provided.";
-
-      const prompt = `You are an elite sports nutritionist and strict dietary compliance filter.
-We are selecting recipes from a global database catalog to fit the user's dietary guidelines.
-
-User Personal Trainer (PT) Notes & Constraints:
-"""
-${ptNotes}
-"""
-
-Database Recipes Catalog (JSON array):
-${JSON.stringify(candidateRecipes, null, 2)}
-
-TASK & STRICT INSTRUCTIONS:
-1. Act as a strict dietary filter: review the provided database recipes against the user's PT notes constraints.
-2. Discard ANY recipe that violates the rules (e.g., forbidden ingredients, allergens, or dietary restrictions).
-3. CRITICAL RULE: DO NOT INVENT RECIPES. You must ONLY select from the database recipes provided above.
-4. From the qualifying compliant recipes, return the top 3 best matching recipes in strict JSON format. If fewer than 3 qualify, return all that qualify.
-5. Return ONLY a strict JSON array of objects without any markdown formatting (no \`\`\`json or \`\`\`) or surrounding text.
-
-Each recipe object in the array must strictly have this structure:
-[
-  {
-    "id": "original recipe id from the provided database",
-    "title": "original title from the provided database",
-    "calories": number,
-    "protein": number,
-    "carbs": number,
-    "fats": number,
-    "badgeText": "PT Approved",
-    "badgeType": "success",
-    "description": "Short explanation of why this recipe matches the user's PT notes and macros"
-  }
-]
-Note: 'badgeType' MUST be either 'success' or 'warning'. Use 'warning' if a recipe is acceptable but approaches a guideline limit.`;
-
-      const response = await ai.models.generateContent({
-        model: "gemini-3.8-flash",
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-        },
-      });
-
-      let parsedRecipes: Recipe[] = [];
-      try {
-        const rawText = response.text || "";
-        const cleaned = rawText
-          .replace(/```json/gi, "")
-          .replace(/```/g, "")
-          .trim();
-        const data = JSON.parse(cleaned);
-        const list = Array.isArray(data) ? data : data?.recipes || [];
-
-        // Strict validation: AI must ONLY return recipes that were provided from the Supabase fetch
-        const candidateMap = new Map(
-          candidateRecipes.map((r: any) => [String(r.id), r])
-        );
-
-        const validatedList = list
-          .filter((item: any) => {
-            const hasId = candidateMap.has(String(item.id));
-            const hasTitle = candidateRecipes.some(
-              (r: any) => r.title?.toLowerCase() === item.title?.toLowerCase()
-            );
-            return hasId || hasTitle;
-          })
-          .slice(0, 3)
-          .map((item: any) => {
-            const original =
-              candidateMap.get(String(item.id)) ||
-              candidateRecipes.find(
-                (r: any) => r.title?.toLowerCase() === item.title?.toLowerCase()
-              );
-
-            return {
-              id: String(item.id || original?.id),
-              title: original?.title || item.title,
-              calories: original?.calories ?? item.calories,
-              protein: original?.protein ?? item.protein,
-              carbs: original?.carbs ?? item.carbs,
-              fats: original?.fats ?? item.fats,
-              badgeText: item.badgeText || "PT Approved",
-              badgeType: (item.badgeType === "warning" ? "warning" : "success") as
-                | "success"
-                | "warning",
-              description:
-                item.description ||
-                original?.description ||
-                "Selected from database catalog and approved against PT guidelines.",
-              ingredients: original?.ingredients || item.ingredients,
-              instructions: original?.instructions || item.instructions,
-            };
-          });
-
-        if (validatedList.length === 0) {
-          setError(
-            "All candidate recipes in the fetched batch were filtered out by your PT dietary rules (e.g. allergens or forbidden ingredients)."
-          );
-          setRecipes([]);
-          return;
-        }
-
-        parsedRecipes = validatedList;
-      } catch (parseError) {
-        console.error("Failed to parse AI response:", parseError);
-        setError("Failed to parse recipe selections from AI. Please try again.");
-        return;
+      if (result.error) {
+        setAlert({
+          visible: true,
+          title: "CATALOG RETRIEVAL NOTICE",
+          message: result.error,
+        });
       }
 
-      setRecipes(parsedRecipes);
-    } catch (err: any) {
-      console.error("Error selecting recipes:", err);
-      setError(
-        err?.message ||
-          "Unable to select recipes right now. Please check your connection and try again."
-      );
-    } finally {
+      if (resetPage) {
+        setRecipes(result.data);
+        setPage(0);
+      } else {
+        setRecipes((prev) => [...prev, ...result.data]);
+      }
+
+      setHasMore(result.hasMore);
       setIsLoading(false);
+      setIsFetchingMore(false);
+    },
+    [filters, page]
+  );
+
+  useEffect(() => {
+    loadCatalog(true);
+  }, [filters]);
+
+  // 2. Hydrate Swipe Deck & Preferences
+  const loadDeck = useCallback(async () => {
+    setIsDeckLoading(true);
+    const [fetchedDeck, prefs] = await Promise.all([
+      fetchSwipeDeck(15),
+      getUserPreferences(),
+    ]);
+    setDeck(fetchedDeck);
+    setUserPrefs(prefs);
+    setIsDeckLoading(false);
+  }, []);
+
+  useEffect(() => {
+    if (mode === "swipe" && deck.length === 0) {
+      loadDeck();
+    }
+  }, [mode, deck.length, loadDeck]);
+
+  const handleEndReached = () => {
+    if (!isFetchingMore && hasMore && !isLoading) {
+      setPage((prev) => prev + 1);
     }
   };
 
-  return (
-    <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        <Text style={styles.header}>Macro-Matched Recipes</Text>
-        <Text style={styles.subtext}>
-          Global database catalog filtered with AI against your PT plan
-        </Text>
+  useEffect(() => {
+    if (page > 0) {
+      loadCatalog(false);
+    }
+  }, [page]);
 
-        {/* Daily Macros Banner */}
-        <View style={styles.targetBanner}>
-          <View style={styles.bannerHeaderRow}>
-            <Text style={styles.targetBannerTitle}>Daily Macro Targets</Text>
-            <Text style={styles.targetBannerRange}>±20% Window</Text>
-          </View>
-          <View style={styles.targetGrid}>
-            <View style={styles.targetItem}>
-              <Text style={styles.targetValue}>{targetCalories}</Text>
-              <Text style={styles.targetLabel}>kcal</Text>
-              <Text style={styles.rangeSubtext}>{calMin}-{calMax}</Text>
-            </View>
-            <View style={styles.targetDivider} />
-            <View style={styles.targetItem}>
-              <Text style={styles.targetValue}>{targetProtein}g</Text>
-              <Text style={styles.targetLabel}>Protein</Text>
-              <Text style={styles.rangeSubtext}>{proteinMin}-{proteinMax}g</Text>
-            </View>
-            <View style={styles.targetDivider} />
-            <View style={styles.targetItem}>
-              <Text style={styles.targetValue}>{targetCarbs}g</Text>
-              <Text style={styles.targetLabel}>Carbs</Text>
-              <Text style={styles.rangeSubtext}>{carbsMin}-{carbsMax}g</Text>
-            </View>
-            <View style={styles.targetDivider} />
-            <View style={styles.targetItem}>
-              <Text style={styles.targetValue}>{targetFats}g</Text>
-              <Text style={styles.targetLabel}>Fats</Text>
-              <Text style={styles.rangeSubtext}>{fatsMin}-{fatsMax}g</Text>
-            </View>
-          </View>
+  // Swipe handlers
+  const handleSwipeRight = async (recipe: Recipe) => {
+    setDeck((prev) => prev.filter((r) => r.id !== recipe.id));
+    const updated = await recordRecipeSwipe(recipe, "like");
+    setUserPrefs(updated);
+    if (deck.length <= 3) {
+      const more = await fetchSwipeDeck(10);
+      setDeck((prev) => [...prev, ...more]);
+    }
+  };
+
+  const handleSwipeLeft = async (recipe: Recipe) => {
+    setDeck((prev) => prev.filter((r) => r.id !== recipe.id));
+    const updated = await recordRecipeSwipe(recipe, "dislike");
+    setUserPrefs(updated);
+    if (deck.length <= 3) {
+      const more = await fetchSwipeDeck(10);
+      setDeck((prev) => [...prev, ...more]);
+    }
+  };
+
+  const handleAddToProtocol = async (recipe: Recipe) => {
+    try {
+      let rawIngs: string[] = [];
+      if (Array.isArray(recipe.ingredients)) {
+        rawIngs = recipe.ingredients;
+      } else if (typeof (recipe.ingredients as any) === "string") {
+        try {
+          const parsed = JSON.parse(recipe.ingredients as any);
+          rawIngs = Array.isArray(parsed) ? parsed : [recipe.ingredients as any];
+        } catch {
+          rawIngs = (recipe.ingredients as any).split(",").map((s: string) => s.trim());
+        }
+      } else {
+        rawIngs = [`${recipe.title} ingredients`];
+      }
+
+      const ex = await AsyncStorage.getItem(PROTOCOL_STORAGE_KEY);
+      const curr: string[] = ex ? JSON.parse(ex) : [];
+      await AsyncStorage.setItem(PROTOCOL_STORAGE_KEY, JSON.stringify([...curr, ...rawIngs]));
+
+      setAlert({
+        visible: true,
+        title: "PROTOCOL COMMITTED",
+        message: `${recipe.title} ingredients synced to Supply Chain.`,
+      });
+    } catch {
+      setAlert({ visible: true, title: "STORAGE ERROR", message: "Failed to persist protocol." });
+    }
+  };
+
+
+  return (
+    <View style={[s.c, { paddingTop: insets.top }]}>
+      <View style={s.h}>
+        <View>
+          <Text style={s.sub}>
+            {mode === "swipe" ? "PREFERENCE ENGINE" : "DISCOVERY CATALOG"}
+          </Text>
+          <Text style={s.t}>
+            {mode === "swipe" ? "Swipe Protocol" : "Recipe Database"}
+          </Text>
         </View>
 
-        {/* PT Notes Summary if present */}
-        {profile?.pt_notes?.trim() ? (
-          <View style={styles.ptNotesCard}>
-            <View style={styles.ptNotesHeader}>
-              <Ionicons name="shield-checkmark" size={16} color="#818cf8" />
-              <Text style={styles.ptNotesTitle}>Active PT Dietary Rules</Text>
-            </View>
-            <Text style={styles.ptNotesText} numberOfLines={3}>
-              {profile.pt_notes.trim()}
-            </Text>
-          </View>
-        ) : null}
-
-        {/* Fetch & Select Recipes Button */}
-        <TouchableOpacity
-          style={[
-            styles.generateButton,
-            isLoading && styles.generateButtonDisabled,
-          ]}
-          onPress={fetchAndFilterRecipes}
-          disabled={isLoading}
-          activeOpacity={0.8}
-        >
-          {isLoading ? (
-            <ActivityIndicator size="small" color="#020617" />
-          ) : (
-            <View style={styles.buttonInner}>
+        <View style={s.headerActions}>
+          <View style={s.modeToggle}>
+            <TouchableOpacity
+              style={[s.modeBtn, mode === "catalog" && s.modeBtnActive]}
+              onPress={() => setMode("catalog")}
+            >
               <Ionicons
-                name="sparkles"
-                size={18}
-                color="#020617"
-                style={styles.buttonIcon}
+                name="grid-outline"
+                size={14}
+                color={mode === "catalog" ? "#020617" : "#818cf8"}
               />
-              <Text style={styles.generateButtonText}>Select Matching Recipes</Text>
+              <Text style={[s.modeText, mode === "catalog" && s.modeTextActive]}>
+                GRID
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[s.modeBtn, mode === "swipe" && s.modeBtnActive]}
+              onPress={() => setMode("swipe")}
+            >
+              <Ionicons
+                name="flame"
+                size={14}
+                color={mode === "swipe" ? "#020617" : "#818cf8"}
+              />
+              <Text style={[s.modeText, mode === "swipe" && s.modeTextActive]}>
+                SWIPE
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {mode === "catalog" && (
+            <TouchableOpacity style={s.btn} onPress={() => setIsFilterOpen(true)}>
+              <Ionicons name="filter-outline" size={15} color="#818cf8" />
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+
+      {mode === "swipe" && (
+        <View style={s.swipeContainer}>
+          <View style={s.prefBar}>
+            <View style={s.prefInfo}>
+              <Ionicons name="sparkles" size={14} color="#818cf8" />
+              <Text style={s.prefText}>
+                {userPrefs?.look_alike_dictionary?.totalSwiped || 0} swiped • Avg{" "}
+                {userPrefs?.look_alike_dictionary?.avgProtein || 0}g protein
+              </Text>
+            </View>
+            <TouchableOpacity onPress={loadDeck} style={s.refreshBtn}>
+              <Ionicons name="refresh" size={14} color="#94a3b8" />
+            </TouchableOpacity>
+          </View>
+
+          {isDeckLoading ? (
+            <RecipeSwipeSkeleton />
+          ) : deck.length === 0 ? (
+            <View style={s.emptyDeck}>
+              <View style={s.emptyIconCircle}>
+                <Ionicons name="checkmark-done" size={32} color="#818cf8" />
+              </View>
+              <Text style={s.emptyDeckTitle}>Protocol Horizon Reached</Text>
+              <Text style={s.emptyDeckSub}>
+                Your culinary preferences have been mapped.
+              </Text>
+              <TouchableOpacity style={s.reloadDeckBtn} onPress={loadDeck}>
+                <Ionicons name="refresh" size={16} color="#020617" />
+                <Text style={s.reloadDeckText}>RELOAD SWIPE PROTOCOL</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={s.deckArea}>
+              <RecipeSwipeDeck
+                recipes={deck}
+                onSwipeRight={handleSwipeRight}
+                onSwipeLeft={handleSwipeLeft}
+                onAddToProtocol={handleAddToProtocol}
+                onDeckEmpty={loadDeck}
+              />
             </View>
           )}
-        </TouchableOpacity>
+        </View>
+      )}
 
-        {/* Loading Indicator */}
-        {isLoading && (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#818cf8" />
-            <Text style={styles.loadingText}>
-              Fetching database catalog & filtering with AI against PT notes...
-            </Text>
-          </View>
-        )}
+      {mode === "catalog" && (
+        <>
+          {Boolean(
+            filters.selectedTag || filters.simplicitySort || filters.under30Mins
+          ) && (
+            <View style={s.pills}>
+              {Boolean(filters.selectedTag) && (
+                <View style={s.pill}>
+                  <Text style={s.pText}>{filters.selectedTag}</Text>
+                </View>
+              )}
+              {filters.simplicitySort && (
+                <View style={s.pill}>
+                  <Text style={s.pText}>Fewest Ings</Text>
+                </View>
+              )}
+              {filters.under30Mins && (
+                <View style={s.pill}>
+                  <Text style={s.pText}>&le; 30 Mins</Text>
+                </View>
+              )}
+            </View>
+          )}
 
-        {/* Fallback Error Message */}
-        {error && !isLoading && (
-          <View style={styles.errorContainer}>
-            <Ionicons name="alert-circle-outline" size={20} color="#eab308" />
-            <Text style={styles.errorText}>{error}</Text>
-          </View>
-        )}
-
-        {/* Empty State */}
-        {!isLoading && recipes.length === 0 && !error && (
-          <View style={styles.emptyContainer}>
-            <Ionicons
-              name="restaurant-outline"
-              size={44}
-              color="#64748b"
-              style={styles.emptyIcon}
+          {isLoading ? (
+            <RecipeCatalogSkeleton count={8} />
+          ) : (
+            <RecipeCatalog
+              recipes={recipes}
+              onAddToProtocol={handleAddToProtocol}
+              onEndReached={handleEndReached}
+              isFetchingMore={isFetchingMore}
             />
-            <Text style={styles.emptyTitle}>No Recipes Selected</Text>
-            <Text style={styles.emptySubtext}>
-              Press &quot;Select Matching Recipes&quot; to fetch meals from the database
-              matching your ±20% macro window and compliant with your trainer&apos;s rules.
-            </Text>
-          </View>
-        )}
+          )}
+        </>
+      )}
 
-        {/* Approved Recipe Cards (Top 3) */}
-        {!isLoading &&
-          recipes.map((recipe, index) => {
-            const isWarning =
-              recipe.badgeType?.toLowerCase() === "warning" ||
-              recipe.badgeText?.toLowerCase().includes("warning");
-
-            return (
-              <View key={recipe.id || index.toString()} style={styles.card}>
-                <View
-                  style={isWarning ? styles.badgeWarning : styles.badgeSuccess}
-                >
-                  <Text
-                    style={
-                      isWarning
-                        ? styles.badgeWarningText
-                        : styles.badgeSuccessText
-                    }
-                  >
-                    {recipe.badgeText || (isWarning ? "Warning" : "PT Approved")}
-                  </Text>
-                </View>
-
-                <Text style={styles.cardTitle}>{recipe.title}</Text>
-
-                {recipe.description ? (
-                  <Text style={styles.cardDescription}>
-                    {recipe.description}
-                  </Text>
-                ) : null}
-
-                {/* Macro Pills Row */}
-                <View style={styles.macroPillsRow}>
-                  <View style={styles.macroPill}>
-                    <Text style={styles.macroPillLabel}>CAL</Text>
-                    <Text style={styles.macroPillValue}>{recipe.calories} kcal</Text>
-                  </View>
-                  <View style={styles.macroPill}>
-                    <Text style={styles.macroPillLabel}>PRO</Text>
-                    <Text style={styles.macroPillValue}>{recipe.protein}g</Text>
-                  </View>
-                  <View style={styles.macroPill}>
-                    <Text style={styles.macroPillLabel}>CARB</Text>
-                    <Text style={styles.macroPillValue}>{recipe.carbs}g</Text>
-                  </View>
-                  <View style={styles.macroPill}>
-                    <Text style={styles.macroPillLabel}>FAT</Text>
-                    <Text style={styles.macroPillValue}>{recipe.fats}g</Text>
-                  </View>
-                </View>
-
-                {/* Ingredients if present */}
-                {recipe.ingredients ? (
-                  <View style={styles.ingredientsBox}>
-                    <Text style={styles.ingredientsLabel}>Ingredients:</Text>
-                    <Text style={styles.ingredientsText} numberOfLines={2}>
-                      {recipe.ingredients}
-                    </Text>
-                  </View>
-                ) : null}
-              </View>
-            );
-          })}
-      </ScrollView>
+      <RecipeFiltersModal
+        visible={isFilterOpen}
+        filters={filters}
+        onClose={() => setIsFilterOpen(false)}
+        onApply={(f) => setFilters(f)}
+        onReset={() =>
+          setFilters({ selectedTag: null, simplicitySort: false, under30Mins: false })
+        }
+      />
+      <CustomAlert
+        visible={alert.visible}
+        title={alert.title}
+        message={alert.message}
+        buttonText="ACKNOWLEDGE"
+        onClose={() => setAlert({ visible: false, title: "", message: "" })}
+      />
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#020617",
-  },
-  scrollContent: {
-    padding: 20,
-    paddingBottom: 40,
-  },
-  header: {
-    fontSize: 24,
-    fontWeight: "bold",
-    color: "#f8fafc",
-    marginBottom: 4,
-  },
-  subtext: {
-    fontSize: 14,
-    color: "#94a3b8",
-    marginBottom: 16,
-  },
-  targetBanner: {
-    backgroundColor: "#0f172a",
-    borderColor: "#1e293b",
-    borderWidth: 1,
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 12,
-  },
-  bannerHeaderRow: {
+const s = StyleSheet.create({
+  c: { flex: 1, backgroundColor: "#020617" },
+  h: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#1e293b",
   },
-  targetBannerTitle: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#94a3b8",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
+  sub: { fontSize: 10, fontWeight: "700", color: "#818cf8", letterSpacing: 1 },
+  t: { fontSize: 20, fontWeight: "800", color: "#f8fafc" },
+  headerActions: { flexDirection: "row", alignItems: "center", gap: 8 },
+  modeToggle: {
+    flexDirection: "row",
+    backgroundColor: "#0f172a",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#1e293b",
+    padding: 2,
   },
-  targetBannerRange: {
-    fontSize: 11,
-    color: "#818cf8",
-    fontWeight: "600",
+  modeBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 5,
+    paddingHorizontal: 8,
+    borderRadius: 6,
+    gap: 4,
   },
-  targetGrid: {
+  modeBtnActive: { backgroundColor: "#818cf8" },
+  modeText: { fontSize: 10, fontWeight: "800", color: "#818cf8" },
+  modeTextActive: { color: "#020617" },
+  btn: {
+    backgroundColor: "#0f172a",
+    padding: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#1e293b",
+  },
+  swipeContainer: { flex: 1 },
+  prefBar: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-  },
-  targetItem: {
-    alignItems: "center",
-    flex: 1,
-  },
-  targetValue: {
-    color: "#818cf8",
-    fontSize: 16,
-    fontWeight: "bold",
-    marginBottom: 2,
-  },
-  targetLabel: {
-    fontSize: 12,
-    color: "#64748b",
-  },
-  rangeSubtext: {
-    fontSize: 10,
-    color: "#475569",
-    marginTop: 2,
-  },
-  targetDivider: {
-    width: 1,
-    height: 32,
-    backgroundColor: "#1e293b",
-  },
-  ptNotesCard: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
     backgroundColor: "#0f172a",
-    borderColor: "#1e293b",
+    borderBottomWidth: 1,
+    borderBottomColor: "#1e293b",
+  },
+  prefInfo: { flexDirection: "row", alignItems: "center", gap: 6 },
+  prefText: { fontSize: 11, fontWeight: "700", color: "#cbd5e1" },
+  refreshBtn: { padding: 4 },
+  deckArea: { flex: 1, position: "relative" },
+  emptyDeck: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 32,
+  },
+  emptyIconCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: "rgba(129, 140, 248, 0.12)",
     borderWidth: 1,
-    borderRadius: 12,
-    padding: 14,
+    borderColor: "#818cf8",
+    justifyContent: "center",
+    alignItems: "center",
     marginBottom: 16,
   },
-  ptNotesHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 6,
-    gap: 6,
-  },
-  ptNotesTitle: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#818cf8",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-  ptNotesText: {
-    fontSize: 13,
-    color: "#cbd5e1",
-    lineHeight: 18,
-  },
-  generateButton: {
-    backgroundColor: "#818cf8",
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 20,
-  },
-  generateButtonDisabled: {
-    opacity: 0.7,
-  },
-  buttonInner: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  buttonIcon: {
-    marginRight: 8,
-  },
-  generateButtonText: {
-    color: "#020617",
-    fontSize: 16,
-    fontWeight: "bold",
-  },
-  loadingContainer: {
-    paddingVertical: 32,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 14,
-    color: "#94a3b8",
-    textAlign: "center",
-    paddingHorizontal: 20,
-  },
-  errorContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "rgba(234, 179, 8, 0.1)",
-    borderColor: "#eab308",
-    borderWidth: 1,
-    borderRadius: 10,
-    padding: 14,
-    marginBottom: 16,
-    gap: 10,
-  },
-  errorText: {
-    flex: 1,
-    color: "#eab308",
-    fontSize: 14,
-    lineHeight: 18,
-  },
-  emptyContainer: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 40,
-    paddingHorizontal: 20,
-    backgroundColor: "#0f172a",
-    borderColor: "#1e293b",
-    borderWidth: 1,
-    borderRadius: 16,
-  },
-  emptyIcon: {
-    marginBottom: 12,
-  },
-  emptyTitle: {
+  emptyDeckTitle: {
     fontSize: 18,
-    fontWeight: "600",
+    fontWeight: "800",
     color: "#f8fafc",
-    marginBottom: 6,
-  },
-  emptySubtext: {
-    fontSize: 14,
-    color: "#64748b",
-    textAlign: "center",
-    lineHeight: 20,
-  },
-  card: {
-    backgroundColor: "#0f172a",
-    borderColor: "#1e293b",
-    borderWidth: 1,
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 16,
-  },
-  cardTitle: {
-    fontSize: 20,
-    fontWeight: "600",
-    color: "#f8fafc",
-    marginBottom: 6,
-  },
-  cardDescription: {
-    fontSize: 14,
-    color: "#94a3b8",
-    marginBottom: 14,
-    lineHeight: 20,
-  },
-  macroPillsRow: {
-    flexDirection: "row",
-    gap: 8,
     marginBottom: 8,
   },
-  macroPill: {
-    flex: 1,
-    backgroundColor: "#020617",
-    borderColor: "#1e293b",
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingVertical: 6,
-    alignItems: "center",
-  },
-  macroPillLabel: {
-    fontSize: 10,
-    fontWeight: "700",
-    color: "#64748b",
-    marginBottom: 2,
-  },
-  macroPillValue: {
-    fontSize: 12,
-    fontWeight: "bold",
-    color: "#f8fafc",
-  },
-  ingredientsBox: {
-    marginTop: 8,
-    paddingTop: 8,
-    borderTopColor: "#1e293b",
-    borderTopWidth: 1,
-  },
-  ingredientsLabel: {
-    fontSize: 11,
-    fontWeight: "600",
-    color: "#64748b",
-    marginBottom: 2,
-  },
-  ingredientsText: {
-    fontSize: 12,
+  emptyDeckSub: {
+    fontSize: 13,
     color: "#94a3b8",
+    textAlign: "center",
+    lineHeight: 18,
+    marginBottom: 20,
   },
-  badgeSuccess: {
-    backgroundColor: "rgba(34, 197, 94, 0.15)",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 6,
-    alignSelf: "flex-start",
-    marginBottom: 12,
-    borderColor: "#22c55e",
+  reloadDeckBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#818cf8",
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+    gap: 6,
+  },
+  reloadDeckText: {
+    color: "#020617",
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 0.5,
+  },
+  pills: {
+    flexDirection: "row",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    gap: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: "#1e293b",
+  },
+  pill: {
+    backgroundColor: "rgba(129, 140, 248, 0.15)",
+    borderColor: "#818cf8",
     borderWidth: 1,
-  },
-  badgeSuccessText: {
-    color: "#22c55e",
-    fontSize: 12,
-    fontWeight: "bold",
-  },
-  badgeWarning: {
-    backgroundColor: "rgba(234, 179, 8, 0.15)",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
     borderRadius: 6,
-    alignSelf: "flex-start",
-    marginBottom: 12,
-    borderColor: "#eab308",
-    borderWidth: 1,
   },
-  badgeWarningText: {
-    color: "#eab308",
-    fontSize: 12,
-    fontWeight: "bold",
-  },
+  pText: { fontSize: 9, fontWeight: "700", color: "#818cf8" },
+  list: { padding: 8, paddingBottom: 30 },
+  footerLoading: { paddingVertical: 16, alignItems: "center" },
+  footerText: { fontSize: 11, color: "#64748b", fontWeight: "600" },
 });
+

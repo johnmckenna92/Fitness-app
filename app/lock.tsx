@@ -30,7 +30,7 @@ export default function LockScreen() {
     if (isLocked) {
       unlock();
     } else {
-      router.replace("/(tabs)/recipes");
+      router.replace("/(tabs)");
     }
   }, [isLocked]);
 

@@ -1,49 +1,42 @@
 import { Ionicons } from "@expo/vector-icons";
-import { Tabs, router } from "expo-router";
-import React, { useCallback } from "react";
-import { StyleSheet, TouchableOpacity } from "react-native";
+import { Tabs } from "expo-router";
+import React from "react";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function TabLayout() {
-  const renderHeaderRight = useCallback(
-    () => (
-      <TouchableOpacity
-        onPress={() => {
-          router.push("/profile");
-        }}
-        style={styles.headerIcon}
-        activeOpacity={0.7}
-      >
-        <Ionicons name="person-circle-outline" size={28} color="#818cf8" />
-      </TouchableOpacity>
-    ),
-    [],
-  );
+  const insets = useSafeAreaInsets();
 
   return (
     <Tabs
       screenOptions={{
-        headerShown: true,
-        headerStyle: {
-          backgroundColor: "#0f172a",
-          borderBottomWidth: 1,
-          borderBottomColor: "#1e293b",
-        },
-        headerTintColor: "#f8fafc",
+        headerShown: false,
         tabBarStyle: {
-          backgroundColor: "#0f172a",
+          backgroundColor: "#020617",
           borderTopColor: "#1e293b",
+          borderTopWidth: 1,
+          height: 60 + insets.bottom,
+          paddingBottom: Math.max(insets.bottom, 8),
+          paddingTop: 8,
         },
         tabBarActiveTintColor: "#818cf8",
-        tabBarInactiveTintColor: "#64748b" as string,
-        headerRight: renderHeaderRight,
+        tabBarInactiveTintColor: "#64748b",
+        tabBarLabelStyle: {
+          fontSize: 10,
+          fontWeight: "700",
+          letterSpacing: 0.3,
+        },
       }}
     >
       <Tabs.Screen
-        name="scanner"
+        name="index"
         options={{
-          title: "Scanner",
-          tabBarIcon: ({ color }) => (
-            <Ionicons name="scan" size={24} color={color as string} />
+          title: "Dashboard",
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons
+              name={focused ? "home" : "home-outline"}
+              size={22}
+              color={color as string}
+            />
           ),
         }}
       />
@@ -51,35 +44,56 @@ export default function TabLayout() {
         name="recipes"
         options={{
           title: "Recipes",
-          tabBarIcon: ({ color }) => (
+          tabBarIcon: ({ color, focused }) => (
             <Ionicons
-              name="restaurant-outline"
-              size={24}
+              name={focused ? "restaurant" : "restaurant-outline"}
+              size={22}
               color={color as string}
             />
           ),
         }}
       />
       <Tabs.Screen
-        name="chat"
+        name="supply-chain"
         options={{
-          title: "Coach",
-          tabBarIcon: ({ color }) => (
+          title: "Supply Chain",
+          tabBarIcon: ({ color, focused }) => (
             <Ionicons
-              name="chatbubbles-outline"
-              size={24}
+              name={focused ? "cart" : "cart-outline"}
+              size={22}
               color={color as string}
             />
           ),
+        }}
+      />
+      <Tabs.Screen
+        name="profile"
+        options={{
+          title: "Profile",
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons
+              name={focused ? "person-circle" : "person-circle-outline"}
+              size={22}
+              color={color as string}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="ExecutionHub.styles"
+        options={{
+          href: null,
+        }}
+      />
+      <Tabs.Screen
+        name="SupplyChain.styles"
+        options={{
+          href: null,
         }}
       />
     </Tabs>
   );
 }
 
-const styles = StyleSheet.create({
-  headerIcon: {
-    marginRight: 16,
-  },
-});
+
 

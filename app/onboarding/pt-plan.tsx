@@ -1,3 +1,4 @@
+import * as ImageManipulator from "expo-image-manipulator";
 import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
 import { useState } from "react";
@@ -16,7 +17,7 @@ import { useAuth } from "../../ctx/AuthContext";
 
 export default function PTPlanScreen() {
   const router = useRouter();
-  const { profile, suppressLockForPicker } = useAuth();
+  const { profile, isPro, suppressLockForPicker } = useAuth();
 
   const [calories, setCalories] = useState("");
   const [protein, setProtein] = useState("");
@@ -24,7 +25,8 @@ export default function PTPlanScreen() {
   const [isProcessing, setIsProcessing] = useState(false);
 
   const handleAIExtract = async () => {
-    if (profile?.subscription_status === "free") {
+    const hasProAccess = isPro || profile?.subscription_status === "pro";
+    if (!hasProAccess) {
       router.push("/pricing");
       return;
     }
@@ -36,19 +38,38 @@ export default function PTPlanScreen() {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
-        quality: 0.8,
+        quality: 0.5,
       });
 
-      if (!result.canceled) {
+      if (!result.canceled && result.assets && result.assets.length > 0) {
         setIsProcessing(true);
 
-        // Simulate sending image to backend/AI for OCR parsing
-        setTimeout(() => {
-          setCalories("2450");
-          setProtein("185");
-          setMeals("4");
+        try {
+          const manipResult = await ImageManipulator.manipulateAsync(
+            result.assets[0].uri,
+            [{ resize: { width: 1200 } }],
+            {
+              compress: 0.7,
+              format: ImageManipulator.SaveFormat.JPEG,
+              base64: true,
+            }
+          );
+
+          if (!manipResult.base64) {
+            throw new Error("Failed to process compressed image data.");
+          }
+
+          // Simulate sending image to backend/AI for OCR parsing
+          setTimeout(() => {
+            setCalories("2450");
+            setProtein("185");
+            setMeals("4");
+            setIsProcessing(false);
+          }, 1500);
+        } catch (manipErr) {
+          console.error("PT Notes compression error:", manipErr);
           setIsProcessing(false);
-        }, 1500);
+        }
       }
     } catch (error) {
       console.error("Image extraction failed:", error);
