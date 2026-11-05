@@ -1,18 +1,14 @@
 {
   "build": {
-    "development": {
-      "developmentClient": true,
-      "distribution": "internal",
-      "android": {
-        "buildType": "apk"
-      }
-    },
     "preview": {
       "distribution": "internal",
       "android": {
         "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://mdhacslestacihqwohop.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_I24xdafCZ0LiqPrt-yT2_Q_DxjF-qbb"
       }
-    },
-    "production": {}
+    }
   }
 }
