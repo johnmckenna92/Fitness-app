@@ -1,66 +1,74 @@
-import { SymbolView } from 'expo-symbols';
-import { Link, Tabs } from 'expo-router';
-import { Platform, Pressable } from 'react-native';
-
-import Colors from '@/constants/Colors';
-import { useColorScheme } from '@/components/useColorScheme';
-import { useClientOnlyValue } from '@/components/useClientOnlyValue';
+import { Ionicons } from "@expo/vector-icons";
+import { Tabs, router } from "expo-router";
+import React, { useCallback } from "react";
+import { StyleSheet, TouchableOpacity } from "react-native";
 
 export default function TabLayout() {
-  const colorScheme = useColorScheme();
+  const renderHeaderRight = useCallback(
+    () => (
+      <TouchableOpacity
+        onPress={() => {
+          router.push("/profile");
+        }}
+        style={styles.headerIcon}
+        activeOpacity={0.7}
+      >
+        <Ionicons name="person-circle-outline" size={28} color="#818cf8" />
+      </TouchableOpacity>
+    ),
+    [],
+  );
 
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme].tint,
-        // Disable the static render of the header on web
-        // to prevent a hydration error in React Navigation v6.
-        headerShown: useClientOnlyValue(false, true),
-      }}>
+        headerShown: true,
+        headerStyle: {
+          backgroundColor: "#0f172a",
+          borderBottomWidth: 1,
+          borderBottomColor: "#1e293b",
+        },
+        headerTintColor: "#f8fafc",
+        tabBarStyle: {
+          backgroundColor: "#0f172a",
+          borderTopColor: "#1e293b",
+        },
+        tabBarActiveTintColor: "#818cf8",
+        tabBarInactiveTintColor: "#64748b" as string,
+        headerRight: renderHeaderRight,
+      }}
+    >
       <Tabs.Screen
-        name="index"
+        name="scanner"
         options={{
-          title: 'Tab One',
+          title: "Scanner",
           tabBarIcon: ({ color }) => (
-            <SymbolView
-              name={{
-                ios: 'chevron.left.forwardslash.chevron.right',
-                android: 'code',
-                web: 'code',
-              }}
-              tintColor={color}
-              size={28}
-            />
-          ),
-          headerRight: () => (
-            <Link href="/modal" asChild>
-              <Pressable style={{ marginRight: 15 }}>
-                {({ pressed }) => (
-                  <SymbolView
-                    name={{ ios: 'info.circle', android: 'info', web: 'info' }}
-                    size={25}
-                    tintColor={Colors[colorScheme].text}
-                    style={{ opacity: pressed ? 0.5 : 1 }}
-                  />
-                )}
-              </Pressable>
-            </Link>
+            <Ionicons name="scan" size={24} color={color as string} />
           ),
         }}
       />
       <Tabs.Screen
-        name="two"
+        name="recipes"
         options={{
-          title: 'Tab Two',
+          title: "Recipes",
           tabBarIcon: ({ color }) => (
-            <SymbolView
-              name={{
-                ios: 'chevron.left.forwardslash.chevron.right',
-                android: 'code',
-                web: 'code',
-              }}
-              tintColor={color}
-              size={28}
+            <Ionicons
+              name="restaurant-outline"
+              size={24}
+              color={color as string}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="chat"
+        options={{
+          title: "Coach",
+          tabBarIcon: ({ color }) => (
+            <Ionicons
+              name="chatbubbles-outline"
+              size={24}
+              color={color as string}
             />
           ),
         }}
@@ -68,3 +76,10 @@ export default function TabLayout() {
     </Tabs>
   );
 }
+
+const styles = StyleSheet.create({
+  headerIcon: {
+    marginRight: 16,
+  },
+});
+

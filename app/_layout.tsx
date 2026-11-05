@@ -1,56 +1,81 @@
-import { useFonts } from 'expo-font';
-import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
-import * as SplashScreen from 'expo-splash-screen';
-import { useEffect } from 'react';
-import 'react-native-reanimated';
-
-import { useColorScheme } from '@/components/useColorScheme';
-
-export {
-  // Catch any errors thrown by the Layout component.
-  ErrorBoundary,
-} from 'expo-router';
-
-export const unstable_settings = {
-  // Ensure that reloading on `/modal` keeps a back button present.
-  anchor: '(tabs)',
-};
-
-// Prevent the splash screen from auto-hiding before asset loading is complete.
-SplashScreen.preventAutoHideAsync();
-
-export default function RootLayout() {
-  const [loaded, error] = useFonts({
-    SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
-  });
-
-  // Expo Router uses Error Boundaries to catch errors in the navigation tree.
-  useEffect(() => {
-    if (error) throw error;
-  }, [error]);
-
-  useEffect(() => {
-    if (loaded) {
-      SplashScreen.hideAsync();
-    }
-  }, [loaded]);
-
-  if (!loaded) {
-    return null;
-  }
-
-  return <RootLayoutNav />;
-}
+import React, { useEffect } from 'react';
+import { Stack, router, useSegments } from 'expo-router';
+import { AuthProvider, useAuth } from '../ctx/AuthContext';
+import { StatusBar } from 'expo-status-bar';
 
 function RootLayoutNav() {
-  const colorScheme = useColorScheme();
+  const { session, isLocked, isLoading } = useAuth();
+  const segments = useSegments();
+
+  useEffect(() => {
+    if (isLoading) return;
+
+    const isModal = segments[0] === 'profile' || segments[0] === 'pricing';
+    if (isModal) return;
+
+    const rootSegment = segments[0];
+    const inAuthGroup = rootSegment === 'auth';
+
+    // 1. Kick unauthenticated users to login if not already in auth flow
+    if (!session) {
+      if (!inAuthGroup) {
+        router.replace('/auth/login');
+      }
+      return;
+    }
+
+    // 2. Lock screen guard for authenticated users
+    if (isLocked) {
+      if (rootSegment !== 'lock') {
+        router.replace('/lock');
+      }
+      return;
+    }
+
+    // 3. Authenticated users are ONLY redirected to recipes if actively trying to access auth screens
+    if (inAuthGroup) {
+      router.replace('/(tabs)/recipes');
+    }
+  }, [session, isLocked, isLoading, segments]);
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+    <>
+      <StatusBar style="light" />
+      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#020617' } }}>
+        <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="auth" />
+        <Stack.Screen name="onboarding" />
+        <Stack.Screen 
+          name="lock" 
+          options={{ 
+            presentation: 'fullScreenModal', 
+            animation: 'fade',
+            gestureEnabled: false,
+            headerLeft: () => null,
+          }} 
+        />
+        <Stack.Screen name="pricing" options={{ presentation: 'modal' }} />
         <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
+        <Stack.Screen 
+          name="profile" 
+          options={{ 
+            headerShown: true, 
+            title: 'Profile & Targets',
+            headerStyle: { backgroundColor: '#0f172a' },
+            headerTintColor: '#f8fafc',
+            presentation: 'modal'
+          }} 
+        />
       </Stack>
-    </ThemeProvider>
+    </>
   );
 }
+
+export default function RootLayout() {
+  return (
+    <AuthProvider>
+      <RootLayoutNav />
+    </AuthProvider>
+  );
+}
+
