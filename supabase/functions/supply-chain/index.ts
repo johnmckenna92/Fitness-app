@@ -1,3 +1,5 @@
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
@@ -28,15 +30,7 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const systemInstruction = `You are an expert UK grocery supply-chain planner and sports nutritionist. Group these ingredients by UK supermarket aisle (e.g. Fresh Produce, Bakery, Butchery & Poultry, Chilled Dairy, Tinned & Pantry, Frozen).
-Consolidate repeated raw ingredients and convert quantities strictly into standard UK supermarket packaging standards and metrics:
-- Weights in grams (g) or kilograms (kg) (e.g. "500g lean beef mince 5% fat", "1kg easy-peeler clementines").
-- Liquids in millilitres (ml) or litres (L) (e.g. "300ml whole milk", "500ml olive oil").
-- Standard UK pack sizes, jars, and tins (e.g. "6-pack free-range large eggs", "2x 400g tins chopped tomatoes", "340g jar smooth peanut butter", "400g loaf seeded bread").
-- Loose produce as natural whole items or metric weights (e.g. "4x bananas", "1kg loose Gala apples").
-NEVER output awkward quantities like "1 unit of a loose gala apple", "1 unit of chicken breast", or tiny impractical fractions like "34.5g peanut butter".
-Ensure absolute consistency with UK English spelling across all item descriptions (e.g. "mince", "courgette", "aubergine", "flavour", "wholemeal").
-OUTPUT STRICTLY AS A JSON ARRAY of objects with 'aisle' (string) and 'items' (array of strings). DO NOT output any conversational text, explanatory notes, or markdown formatting. ONLY output the valid JSON array.`;
+    const systemInstruction = `Group these ingredients by supermarket aisle. Convert quantities into standard UK supermarket pack sizes to minimize waste. OUTPUT STRICTLY AS A JSON ARRAY of objects with 'aisle' and 'items' (array of strings). DO NOT output any conversational text or markdown formatting. ONLY output the JSON list.`;
 
     const userContent = `Weekly Protocol Raw Ingredients:\n${JSON.stringify(ingredients, null, 2)}`;
 

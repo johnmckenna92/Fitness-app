@@ -1,3 +1,5 @@
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
@@ -29,12 +31,7 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const prompt = `You are an elite UK sports nutritionist and body recomposition coach. The user wants to eat: "${trimmed}".
-Re-engineer this meal to maximize protein, balance micronutrients, and optimize macros for body recomposition.
-- Keep prep time under 20 minutes.
-- All quantities MUST strictly use UK metric units (grams 'g', millilitres 'ml') or natural whole UK items.
-- Enforce strict UK English spelling throughout all text (e.g., 'flavour', 'fibre', 'courgette', 'aubergine', 'mince', 'wholemeal', 'optimise').
-Output strictly in Markdown with headers: ## The Problem, ## The Fix, ## Upgraded Macros, ## Quick Instructions.`;
+    const prompt = `You are an elite sports nutritionist. The user wants to eat: ${trimmed}. Re-engineer this meal to maximize protein and optimize macros for body recomposition. Keep prep time under 20 minutes. Output strictly in Markdown with headers: ## The Problem, ## The Fix, ## Upgraded Macros, ## Quick Instructions.`;
 
     const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${apiKey}`;
 
