@@ -1,13 +1,13 @@
 import React, { useEffect, useState } from "react";
-import { Animated, Dimensions, StyleSheet, View } from "react-native";
+import { Animated, Dimensions, ScrollView, StyleSheet, View } from "react-native";
+import { useTheme } from "../ctx/ThemeContext";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
-const NUM_COLUMNS = 2;
-const CARD_GAP = 10;
 const TOTAL_PADDING = 32;
-const ITEM_WIDTH = (SCREEN_WIDTH - TOTAL_PADDING - CARD_GAP) / NUM_COLUMNS;
+const ITEM_WIDTH = SCREEN_WIDTH - TOTAL_PADDING;
 
 export function RecipeCardSkeleton() {
+  const { colors } = useTheme();
   const [opacity] = useState(() => new Animated.Value(0.3));
 
   useEffect(() => {
@@ -30,28 +30,76 @@ export function RecipeCardSkeleton() {
   }, [opacity]);
 
   return (
-    <View style={styles.card}>
-      <Animated.View style={[styles.imagePlaceholder, { opacity }]} />
+    <View
+      style={[
+        styles.card,
+        {
+          backgroundColor: colors.card,
+          borderColor: colors.cardBorder,
+        },
+      ]}
+    >
+      <Animated.View
+        style={[
+          styles.imagePlaceholder,
+          { backgroundColor: colors.surfaceSubtle, opacity },
+        ]}
+      />
       <View style={styles.cardContent}>
-        <Animated.View style={[styles.titleLine, { opacity }]} />
-        <Animated.View style={[styles.titleLineShort, { opacity }]} />
-        <View style={styles.macroRow}>
-          <Animated.View style={[styles.pill, { opacity }]} />
-          <Animated.View style={[styles.pill, { opacity }]} />
+        <Animated.View
+          style={[
+            styles.titleLine,
+            { backgroundColor: colors.surfaceSubtle, opacity },
+          ]}
+        />
+        <Animated.View
+          style={[
+            styles.titleLineShort,
+            { backgroundColor: colors.surfaceSubtle, opacity },
+          ]}
+        />
+        <View style={styles.bottomRow}>
+          <View style={styles.macroRow}>
+            <Animated.View
+              style={[
+                styles.pill,
+                {
+                  backgroundColor: colors.surfaceSubtle,
+                  borderColor: colors.borderSubtle,
+                  opacity,
+                },
+              ]}
+            />
+            <Animated.View
+              style={[
+                styles.pill,
+                {
+                  backgroundColor: colors.surfaceSubtle,
+                  borderColor: colors.borderSubtle,
+                  opacity,
+                },
+              ]}
+            />
+          </View>
+          <Animated.View
+            style={[
+              styles.button,
+              { backgroundColor: colors.surfaceSubtle, opacity },
+            ]}
+          />
         </View>
-        <Animated.View style={[styles.button, { opacity }]} />
       </View>
     </View>
   );
 }
 
-export function RecipeCatalogSkeleton({ count = 8 }: { count?: number }) {
+export function RecipeCatalogSkeleton({ count = 4 }: { count?: number }) {
   return (
-    <View style={styles.grid}>
+    <ScrollView contentContainerStyle={styles.grid} showsVerticalScrollIndicator={false}>
       {Array.from({ length: count }).map((_, i) => (
         <RecipeCardSkeleton key={i} />
       ))}
-    </View>
+    </ScrollView>
   );
 }
 
@@ -103,66 +151,72 @@ export function RecipeSwipeSkeleton() {
 
 const styles = StyleSheet.create({
   grid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "space-between",
     paddingHorizontal: 16,
+    paddingTop: 16,
     paddingBottom: 24,
   },
   card: {
     width: ITEM_WIDTH,
     backgroundColor: "#0f172a",
-    borderRadius: 14,
+    borderRadius: 18,
     borderWidth: 1,
     borderColor: "#1e293b",
-    marginBottom: 12,
+    marginBottom: 16,
     overflow: "hidden",
   },
   imagePlaceholder: {
     width: "100%",
-    height: 110,
+    height: 190,
     backgroundColor: "#1e293b",
   },
   cardContent: {
-    padding: 10,
+    padding: 14,
   },
   titleLine: {
-    height: 12,
+    height: 16,
     backgroundColor: "#1e293b",
     borderRadius: 4,
-    width: "90%",
-    marginBottom: 6,
+    width: "80%",
+    marginBottom: 8,
   },
   titleLineShort: {
-    height: 12,
+    height: 16,
     backgroundColor: "#1e293b",
     borderRadius: 4,
-    width: "60%",
-    marginBottom: 10,
+    width: "50%",
+    marginBottom: 14,
+  },
+  bottomRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
   },
   macroRow: {
     flexDirection: "row",
-    gap: 6,
-    marginBottom: 10,
+    gap: 8,
+    flex: 1,
   },
   pill: {
     flex: 1,
-    height: 28,
+    height: 38,
     backgroundColor: "#020617",
-    borderRadius: 6,
+    borderRadius: 8,
     borderWidth: 1,
     borderColor: "#1e293b",
   },
   button: {
-    height: 30,
+    width: 110,
+    height: 38,
     backgroundColor: "#1e293b",
-    borderRadius: 8,
+    borderRadius: 10,
   },
   swipeContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
     padding: 16,
+    paddingTop: 24,
   },
   swipeCard: {
     width: "100%",

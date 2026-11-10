@@ -2,24 +2,46 @@ import React, { createContext, useContext, useEffect, useRef, useState } from 'r
 import { AppState, AppStateStatus } from 'react-native';
 import { supabase } from '../lib/supabase';
 import { Session } from '@supabase/supabase-js';
-import * as LocalAuthentication from 'expo-local-authentication';
+
+export interface TrainerProfile {
+  id?: string;
+  full_name: string | null;
+  avatar_url: string | null;
+  trainer_bio?: string | null;
+  role?: string | null;
+}
 
 export interface Profile {
   id: string;
-  full_name: string;
-  target_calories: number;
-  target_protein: number;
-  target_carbs: number;
-  target_fats: number;
-  meals_per_day: number;
-  subscription_status: 'free' | 'pro';
-  is_pro?: boolean;
+  full_name: string | null;
+  target_calories: number | null;
+  target_protein: number | null;
+  target_carbs: number | null;
+  target_fats: number | null;
+  meals_per_day: number | null;
+  subscription_status: 'free' | 'pro' | 'athlete' | string | null;
+  subscription_tier?: string | null;
+  stripe_customer_id?: string | null;
+  role?: 'client' | 'trainer' | null;
+  is_pro?: boolean | null;
   pt_notes: string | null;
+  protocol_notes?: string | null;
   avatar_url?: string | null;
+  trainer_id?: string | null;
+  trainer?: TrainerProfile | null;
+  trainer_bio?: string | null;
+  account_status?: 'active' | 'locked_trainer_revoked' | 'inactive' | string | null;
+  client_state?: 'active' | 'frozen' | 'deactivated' | string | null;
+
   goals?: string[] | null;
   height?: number | null; // Standardized in cm
   weight?: number | null; // Standardized in kg
-  macro_variance?: number;
+  macro_variance?: number | null;
+  age?: number | null;
+  sex?: string | null;
+  activity_level?: string | null;
+  swipes_today?: number | null;
+  last_swipe_date?: string | null;
 }
 
 export interface DailyTargets {
@@ -68,6 +90,7 @@ export function getDailyTargets(
 export interface AuthContextProps {
   session: Session | null;
   profile: Profile | null;
+  role: 'client' | 'trainer' | null;
   macro_variance: number;
   isPro: boolean;
   isProLoading: boolean;
@@ -77,6 +100,7 @@ export interface AuthContextProps {
   setIsTrainingDay: React.Dispatch<React.SetStateAction<boolean>>;
   unlock: () => Promise<void>;
   suppressLockForPicker: () => void;
+  isPickerSuppressed: boolean;
   refreshProfile: () => Promise<void>;
   checkProStatus: (userId?: string) => Promise<boolean>;
   signOut: () => Promise<void>;
@@ -107,7 +131,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('is_pro')
+        .select('is_pro, trainer_id, subscription_status')
         .eq('id', targetId)
         .single();
 
@@ -116,7 +140,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         return false;
       }
 
-      const proStatus = !!data?.is_pro;
+      const proStatus = Boolean(data?.is_pro || data?.subscription_status === 'pro' || data?.trainer_id);
       setIsPro(proStatus);
       return proStatus;
     } catch (err) {
@@ -132,17 +156,15 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('*')
+        .select('*, trainer:trainer_id(id, full_name, avatar_url, trainer_bio)')
         .eq('id', session.user.id)
         .single();
 
       if (!error && data) {
-        setProfile(data);
-        if (typeof data.is_pro === 'boolean') {
-          setIsPro(data.is_pro);
-        } else if (data.subscription_status === 'pro') {
-          setIsPro(true);
-        }
+        const unwrappedTrainer = Array.isArray((data as any)?.trainer) ? (data as any).trainer[0] : (data as any)?.trainer;
+        setProfile({ ...data, trainer: unwrappedTrainer } as unknown as Profile);
+        const proStatus = Boolean(data.is_pro || data.subscription_status === 'pro' || data.trainer_id);
+        setIsPro(proStatus);
       }
     } catch (err) {
       console.error('Error refreshing profile:', err);
@@ -150,26 +172,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   const unlock = async () => {
-    try {
-      const hasHardware = await LocalAuthentication.hasHardwareAsync();
-      const isEnrolled = await LocalAuthentication.isEnrolledAsync();
-      
-      if (!hasHardware || !isEnrolled) {
-        setIsLocked(false);
-        return;
-      }
-
-      const result = await LocalAuthentication.authenticateAsync({
-        promptMessage: 'Unlock App',
-        fallbackLabel: 'Use Passcode'
-      });
-
-      if (result.success) {
-        setIsLocked(false);
-      }
-    } catch (e) {
-      console.error(e);
-    }
+    setIsLocked(false);
   };
 
   const suppressLockForPicker = () => {
@@ -213,16 +216,16 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       if (newSession?.user) {
         setIsProLoading(true);
         try {
-          // Immediately execute supabase.from('profiles').select('is_pro').eq('id', session.user.id).single()
+          // Immediately execute supabase.from('profiles').select('is_pro, trainer_id, subscription_status').eq('id', newSession.user.id).single()
           const { data, error } = await supabase
             .from('profiles')
-            .select('is_pro')
+            .select('is_pro, trainer_id, subscription_status')
             .eq('id', newSession.user.id)
             .single();
 
           if (isMounted) {
             if (!error && data) {
-              setIsPro(!!data.is_pro);
+              setIsPro(Boolean(data.is_pro || data.subscription_status === 'pro' || data.trainer_id));
             } else {
               setIsPro(false);
             }
@@ -231,15 +234,14 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           // Hydrate full profile
           const { data: profileData } = await supabase
             .from('profiles')
-            .select('*')
+            .select('*, trainer:trainer_id(id, full_name, avatar_url, trainer_bio)')
             .eq('id', newSession.user.id)
             .single();
 
           if (isMounted && profileData) {
-            setProfile(profileData);
-            if (typeof profileData.is_pro === 'boolean') {
-              setIsPro(profileData.is_pro);
-            }
+            const unwrappedTrainer = Array.isArray((profileData as any)?.trainer) ? (profileData as any).trainer[0] : (profileData as any)?.trainer;
+            setProfile({ ...profileData, trainer: unwrappedTrainer } as unknown as Profile);
+            setIsPro(Boolean(profileData.is_pro || (profileData as any).subscription_status === 'pro' || profileData.trainer_id));
           }
         } catch (e) {
           console.error('Error fetching pro status on session change:', e);
@@ -289,6 +291,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       value={{
         session,
         profile,
+        role: profile?.role ?? null,
         macro_variance: profile?.macro_variance ?? 20,
         isPro,
         isProLoading,
@@ -298,6 +301,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         setIsTrainingDay,
         unlock,
         suppressLockForPicker,
+        isPickerSuppressed,
         refreshProfile,
         checkProStatus,
         signOut,
@@ -313,3 +317,4 @@ export const useAuth = () => {
   if (!context) throw new Error('useAuth must be used within an AuthProvider');
   return context;
 };
+

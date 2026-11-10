@@ -111,7 +111,7 @@ export interface AisleGroup {
  * @param rawIngredients - List of all raw ingredient strings from the weekly protocol.
  * @returns Array of grouped aisle objects with standardized grocery items.
  */
-export async function optimizeSupplyChain(
+export async function optimizeShoppingList(
   rawIngredients: string[],
 ): Promise<AisleGroup[]> {
   if (!rawIngredients || rawIngredients.length === 0) {
@@ -150,10 +150,15 @@ export async function optimizeSupplyChain(
 
     throw new Error("Invalid format received from grocery optimizer.");
   } catch (err: any) {
-    console.error("Supabase Edge Function optimizeSupplyChain failed:", err);
+    console.error("Supabase Edge Function optimizeShoppingList failed:", err);
     throw new Error(
       err?.message || "Failed to organize grocery list items.",
     );
   }
 }
+
+/**
+ * Backward compatibility alias for optimizeShoppingList.
+ */
+export const optimizeSupplyChain = optimizeShoppingList;
 

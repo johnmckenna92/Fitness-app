@@ -8,7 +8,11 @@
     "scheme": "fitnessapp",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSHealthShareUsageDescription": "Allow KineticLab to read steps and active calories for health goal tracking.",
+        "NSHealthUpdateUsageDescription": "Allow KineticLab to sync your workout and activity data."
+      }
     },
     "android": {
       "softwareKeyboardLayoutMode": "resize",
@@ -55,7 +59,20 @@
         }
       ],
       "@react-native-community/datetimepicker",
-      "expo-image"
+      "expo-image",
+      [
+        "react-native-health",
+        {
+          "NSHealthShareUsageDescription": "Allow KineticLab to read steps and active calories for health goal tracking.",
+          "NSHealthUpdateUsageDescription": "Allow KineticLab to sync your workout and activity data."
+        }
+      ],
+      [
+        "react-native-health-connect",
+        {
+          "permissions": ["READ_STEPS", "READ_ACTIVE_CALORIES_BURNED", "READ_TOTAL_CALORIES_BURNED"]
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

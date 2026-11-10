@@ -27,7 +27,7 @@ export default function ModalScreen() {
           <Ionicons
             name="information-circle-outline"
             size={32}
-            color="#818cf8"
+            color="#4ade80"
           />
         </View>
         <Text style={styles.title}>System Notice</Text>
@@ -51,17 +51,17 @@ export default function ModalScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#020617",
+    backgroundColor: "#0a0a0a",
     justifyContent: "center",
     alignItems: "center",
     paddingHorizontal: 24,
   },
   card: {
     width: "100%",
-    backgroundColor: "#0f172a",
+    backgroundColor: "#171717",
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: "#1e293b",
+    borderColor: "#262626",
     padding: 24,
     alignItems: "center",
   },
@@ -69,9 +69,9 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: "rgba(129, 140, 248, 0.1)",
+    backgroundColor: "rgba(74, 222, 128, 0.1)",
     borderWidth: 1,
-    borderColor: "#818cf8",
+    borderColor: "#4ade80",
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 16,
@@ -91,14 +91,14 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   button: {
-    backgroundColor: "#818cf8",
+    backgroundColor: "#4ade80",
     width: "100%",
     paddingVertical: 14,
     borderRadius: 12,
     alignItems: "center",
   },
   buttonText: {
-    color: "#020617",
+    color: "#0a0a0a",
     fontSize: 15,
     fontWeight: "700",
   },

@@ -35,17 +35,17 @@ Deno.serve(async (req: Request) => {
     const textQuery = cleanImage ? null : (typeof query === "string" ? query : null);
 
     if (!cleanImage && !textQuery) {
-      return new Response(
-        JSON.stringify({ error: "No image or query provided for analysis." }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      return Response.json(
+        { error: "No image or query provided for analysis." },
+        { status: 400, headers: corsHeaders }
       );
     }
 
     const apiKey = Deno.env.get("GEMINI_API_KEY");
     if (!apiKey) {
-      return new Response(
-        JSON.stringify({ error: "GEMINI_API_KEY environment variable is not configured." }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      return Response.json(
+        { error: "GEMINI_API_KEY environment variable is not configured." },
+        { status: 400, headers: corsHeaders }
       );
     }
 
@@ -76,9 +76,13 @@ Deno.serve(async (req: Request) => {
       ? `\n\nPersonal Trainer Rules & Plan Guidelines:\n"""\n${ptNotes.trim()}\n"""\nIMPORTANT: Explicitly flag if the scanned food violates any of the uploaded PT rules (e.g., forbidden ingredients, allergens, or dietary restrictions).`
       : "");
 
-    const systemGoalsPrefix = `SYSTEM: The user's fitness goals are ${userGoals}. Tailor your entire breakdown, tone, and recommendations to actively support these goals.\n\n`;
+    const strictGuardrail =
+      "You are a strict nutrition and fitness coach. If the user uploads an image or asks a question unrelated to food, fitness, nutrition, or physical training, you must politely refuse to answer. Do NOT process non-food items.";
+
+    const systemGoalsPrefix = `SYSTEM: ${strictGuardrail}\n\nThe user's fitness goals are ${userGoals}. Tailor your entire breakdown, tone, and recommendations to actively support these goals.\n\n`;
 
     const deepDiveSystemPrompt =
+      `${strictGuardrail} ` +
       `You are an elite clinical nutritionist and sports scientist. Analyze this food label/meal. ` +
       `USER PROTOCOL: Goals: ${userGoals}. Target Macros: ${dailyTargets.protein || 0}g P, ${dailyTargets.carbs || 0}g C, ${dailyTargets.fats || 0}g F. Status: ${isTrainingDay ? "Training Day (High Fuel)" : "Rest Day (Low Fuel)"}. ` +
       `TASK: Ignore standard estimations. Analyze for artificial additives, emulsifiers, and protein bioavailability. ` +
@@ -105,14 +109,14 @@ Return a highly structured breakdown of this meal. Use '##' for section headers 
       parts.push({ text: `${promptText}\n\nItem or Food to analyze:\n${textQuery}` });
     }
 
-    const requestPayload: any = { contents: [{ role: "user", parts }] };
-    if (isDeepDiveActive) {
-      requestPayload.systemInstruction = {
-        parts: [{ text: deepDiveSystemPrompt }],
-      };
-    }
+    const requestPayload: any = {
+      contents: [{ role: "user", parts }],
+      systemInstruction: {
+        parts: [{ text: isDeepDiveActive ? deepDiveSystemPrompt : `${strictGuardrail}\n\n${standardPrompt}` }],
+      },
+    };
 
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${apiKey}`;
     let response: Response;
     try {
       response = await fetch(geminiUrl, {
@@ -121,18 +125,18 @@ Return a highly structured breakdown of this meal. Use '##' for section headers 
         body: JSON.stringify(requestPayload),
       });
     } catch (fetchErr: any) {
-      return new Response(
-        JSON.stringify({ error: `Gemini Network Error: ${fetchErr.message}` }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      return Response.json(
+        { error: `Gemini Network Error: ${fetchErr.message}` },
+        { status: 400, headers: corsHeaders }
       );
     }
 
     if (!response.ok) {
       const errorText = await response.text();
       console.error("Gemini API error:", response.status, errorText);
-      return new Response(
-        JSON.stringify({ error: `AI provider error: ${errorText || response.statusText}` }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      return Response.json(
+        { error: `AI provider error: ${errorText || response.statusText}` },
+        { status: 400, headers: corsHeaders }
       );
     }
 
@@ -140,21 +144,21 @@ Return a highly structured breakdown of this meal. Use '##' for section headers 
     const outputText = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "";
 
     if (!outputText) {
-      return new Response(
-        JSON.stringify({ error: "Gemini returned an empty response." }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      return Response.json(
+        { error: "Gemini returned an empty response." },
+        { status: 400, headers: corsHeaders }
       );
     }
 
-    return new Response(
-      JSON.stringify({ analysis: outputText, markdown: outputText }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
+    return Response.json(
+      { analysis: outputText, markdown: outputText },
+      { headers: corsHeaders, status: 200 }
     );
   } catch (error: any) {
     console.error("ingredient-scanner error:", error);
-    return new Response(
-      JSON.stringify({ error: error.message || "Internal server error." }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
+    return Response.json(
+      { error: error.message || "Internal server error." },
+      { headers: corsHeaders, status: 400 }
     );
   }
 });

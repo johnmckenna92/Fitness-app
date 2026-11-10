@@ -1,1 +1,1 @@
-export { default } from './auth/update-password';
+export { default } from './(auth)/update-password';

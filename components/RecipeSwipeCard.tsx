@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { router } from "expo-router";
-import React, { useRef } from "react";
+import React, { useMemo, useState } from "react";
 import {
   Animated,
   Dimensions,
@@ -11,17 +11,40 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { Recipe } from "../types/recipe";
+import { UnifiedRecipe } from "../types/recipe";
+import { useTheme } from "../ctx/ThemeContext";
+
+function resolveSecureHero(recipe: UnifiedRecipe): string | null {
+  const candidate =
+    recipe.image_url ||
+    (recipe.images && recipe.images.length > 0 ? recipe.images[0] : null) ||
+    (recipe as any).recipe_image ||
+    (recipe as any).recipe_images?.recipe_image;
+
+  let urlStr: string | null = null;
+  if (typeof candidate === "string") {
+    urlStr = candidate;
+  } else if (candidate && typeof candidate === "object") {
+    urlStr = candidate.image_url || candidate.url || candidate.value || null;
+  }
+
+  if (!urlStr) return null;
+  const trimmed = urlStr.trim();
+  if (trimmed.length === 0) return null;
+  if (trimmed.startsWith("http://")) return "https://" + trimmed.slice(7);
+  if (trimmed.startsWith("//")) return "https:" + trimmed;
+  return trimmed;
+}
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const SWIPE_THRESHOLD = SCREEN_WIDTH * 0.3;
 
 export interface RecipeSwipeCardProps {
-  recipe: Recipe;
+  recipe: UnifiedRecipe;
   isTopCard: boolean;
-  onSwipeRight: (recipe: Recipe) => void;
-  onSwipeLeft: (recipe: Recipe) => void;
-  onAddToProtocol?: (recipe: Recipe) => void;
+  onSwipeRight: (recipe: UnifiedRecipe) => void;
+  onSwipeLeft: (recipe: UnifiedRecipe) => void;
+  onAddToProtocol?: (recipe: UnifiedRecipe) => void;
 }
 
 export function RecipeSwipeCard({
@@ -31,49 +54,52 @@ export function RecipeSwipeCard({
   onSwipeLeft,
   onAddToProtocol,
 }: RecipeSwipeCardProps) {
-  const pan = useRef(new Animated.ValueXY()).current;
+  const { colors } = useTheme();
+  const [pan] = useState(() => new Animated.ValueXY());
 
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => isTopCard,
-      onMoveShouldSetPanResponder: (_, gesture) => {
-        return isTopCard && (Math.abs(gesture.dx) > 5 || Math.abs(gesture.dy) > 5);
-      },
-      onPanResponderMove: Animated.event([null, { dx: pan.x, dy: pan.y }], {
-        useNativeDriver: false,
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => isTopCard,
+        onMoveShouldSetPanResponder: (_, gesture) => {
+          return isTopCard && (Math.abs(gesture.dx) > 5 || Math.abs(gesture.dy) > 5);
+        },
+        onPanResponderMove: Animated.event([null, { dx: pan.x, dy: pan.y }], {
+          useNativeDriver: false,
+        }),
+        onPanResponderRelease: (_, gesture) => {
+          if (!isTopCard) return;
+
+          if (gesture.dx > SWIPE_THRESHOLD || gesture.vx > 0.8) {
+            Animated.timing(pan, {
+              toValue: { x: SCREEN_WIDTH + 100, y: gesture.dy },
+              duration: 250,
+              useNativeDriver: false,
+            }).start(() => {
+              onSwipeRight(recipe);
+              pan.setValue({ x: 0, y: 0 });
+            });
+          } else if (gesture.dx < -SWIPE_THRESHOLD || gesture.vx < -0.8) {
+            Animated.timing(pan, {
+              toValue: { x: -SCREEN_WIDTH - 100, y: gesture.dy },
+              duration: 250,
+              useNativeDriver: false,
+            }).start(() => {
+              onSwipeLeft(recipe);
+              pan.setValue({ x: 0, y: 0 });
+            });
+          } else {
+            Animated.spring(pan, {
+              toValue: { x: 0, y: 0 },
+              friction: 5,
+              tension: 40,
+              useNativeDriver: false,
+            }).start();
+          }
+        },
       }),
-      onPanResponderRelease: (_, gesture) => {
-        if (!isTopCard) return;
-
-        if (gesture.dx > SWIPE_THRESHOLD || gesture.vx > 0.8) {
-          Animated.timing(pan, {
-            toValue: { x: SCREEN_WIDTH + 100, y: gesture.dy },
-            duration: 250,
-            useNativeDriver: false,
-          }).start(() => {
-            onSwipeRight(recipe);
-            pan.setValue({ x: 0, y: 0 });
-          });
-        } else if (gesture.dx < -SWIPE_THRESHOLD || gesture.vx < -0.8) {
-          Animated.timing(pan, {
-            toValue: { x: -SCREEN_WIDTH - 100, y: gesture.dy },
-            duration: 250,
-            useNativeDriver: false,
-          }).start(() => {
-            onSwipeLeft(recipe);
-            pan.setValue({ x: 0, y: 0 });
-          });
-        } else {
-          Animated.spring(pan, {
-            toValue: { x: 0, y: 0 },
-            friction: 5,
-            tension: 40,
-            useNativeDriver: false,
-          }).start();
-        }
-      },
-    })
-  ).current;
+    [isTopCard, onSwipeLeft, onSwipeRight, pan, recipe]
+  );
 
   const rotate = pan.x.interpolate({
     inputRange: [-SCREEN_WIDTH * 1.5, 0, SCREEN_WIDTH * 1.5],
@@ -94,7 +120,11 @@ export function RecipeSwipeCard({
 
   const rawTags: string[] = (recipe.tags || []).slice(0, 4);
   const rawIngredients: string[] = (recipe.ingredients || []).slice(0, 5);
-  const heroImage = (recipe.images && recipe.images.length > 0) ? recipe.images[0] : recipe.image_url;
+  const heroImage = resolveSecureHero(recipe);
+  const [failedUri, setFailedUri] = useState<string | null>(null);
+  const hasImageError = Boolean(heroImage && failedUri === heroImage);
+  const title = recipe.title || recipe.name || "Untitled Meal";
+  const cookTime = recipe.cook_time ? `${recipe.cook_time}` : recipe.prep_time ? `${recipe.prep_time}m` : "Fast";
 
   const animatedStyle = isTopCard
     ? { transform: [{ translateX: pan.x }, { translateY: pan.y }, { rotate }] }
@@ -127,7 +157,10 @@ export function RecipeSwipeCard({
       style={[styles.cardContainer, animatedStyle]}
       {...(isTopCard ? panResponder.panHandlers : {})}
     >
-      <View style={styles.card}>
+      <View
+        style={styles.card}
+        className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800"
+      >
         <Animated.View style={[styles.badge, styles.likeBadge, { opacity: likeOpacity }]}>
           <Text style={styles.likeBadgeText}>LIKE</Text>
         </Animated.View>
@@ -140,30 +173,33 @@ export function RecipeSwipeCard({
           onPress={() => router.push(`/recipe/${recipe.id}` as any)}
           style={{ flex: 1 }}
         >
-          <View style={styles.heroVisual}>
-            {heroImage ? (
+          <View style={styles.heroVisual} className="bg-zinc-100 dark:bg-zinc-950 border-b border-zinc-200 dark:border-zinc-800">
+            {heroImage && !hasImageError ? (
               <Image
                 source={{ uri: heroImage }}
-                style={StyleSheet.absoluteFill}
+                style={styles.heroImage}
                 contentFit="cover"
                 cachePolicy="memory-disk"
                 transition={150}
+                onError={() => {
+                  if (heroImage) setFailedUri(heroImage);
+                }}
               />
             ) : (
-              <View style={styles.iconCircle}>
-                <Ionicons name="flame-outline" size={36} color="#818cf8" />
+              <View style={styles.fallbackVisual} className="bg-zinc-100 dark:bg-zinc-950">
+                <Ionicons name="fast-food-outline" size={48} color="#64748b" />
               </View>
             )}
             <View style={styles.heroOverlay}>
-              <View style={styles.macroPillHeader}>
+              <View style={styles.macroPillHeader} className="bg-black/60 border border-white/20">
                 <Ionicons name="time-outline" size={14} color="#94a3b8" />
                 <Text style={styles.cookTimeText}>
-                  {recipe.cook_time ? `${recipe.cook_time}` : "Fast"}
+                  {cookTime}
                 </Text>
               </View>
-              <View style={styles.macroPillHeader}>
-                <Ionicons name="nutrition-outline" size={14} color="#818cf8" />
-                <Text style={[styles.cookTimeText, { color: "#818cf8", fontWeight: "700" }]}>
+              <View style={styles.macroPillHeader} className="bg-black/60 border border-white/20">
+                <Ionicons name="nutrition-outline" size={14} color="#4ade80" />
+                <Text style={[styles.cookTimeText, { color: "#4ade80", fontWeight: "700" }]}>
                   {rawIngredients.length} Ings
                 </Text>
               </View>
@@ -171,51 +207,56 @@ export function RecipeSwipeCard({
           </View>
 
           <View style={styles.body}>
-            <Text style={styles.title} numberOfLines={2}>
-              {recipe.title}
+            <Text
+              style={styles.title}
+              className="text-zinc-900 dark:text-white"
+              numberOfLines={2}
+            >
+              {title}
             </Text>
 
             <View style={styles.macrosRow}>
-              <View style={styles.macroBox}>
-                <Text style={styles.macroVal}>{Math.round(recipe.calories || 0)}</Text>
-                <Text style={styles.macroLbl}>CALS</Text>
+              <View style={styles.macroBox} className="bg-zinc-100 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800">
+                <Text style={styles.macroVal} className="text-zinc-900 dark:text-zinc-100">{Math.round(recipe.calories || 0)}</Text>
+                <Text style={styles.macroLbl} className="text-zinc-500 dark:text-zinc-400">CALS</Text>
               </View>
-              <View style={[styles.macroBox, styles.proteinBox]}>
-                <Text style={[styles.macroVal, styles.proteinVal]}>{Math.round(recipe.protein || 0)}g</Text>
-                <Text style={[styles.macroLbl, styles.proteinLbl]}>PROTEIN</Text>
+              <View style={[styles.macroBox, styles.proteinBox]} className="border border-emerald-300 dark:border-emerald-500/40 bg-emerald-50 dark:bg-emerald-950/30">
+                <Text style={[styles.macroVal, styles.proteinVal]} className="text-emerald-700 dark:text-emerald-400">{Math.round(recipe.protein || 0)}g</Text>
+                <Text style={[styles.macroLbl, styles.proteinLbl]} className="text-emerald-700 dark:text-emerald-400">PROTEIN</Text>
               </View>
-              <View style={styles.macroBox}>
-                <Text style={styles.macroVal}>{Math.round(recipe.carbs || 0)}g</Text>
-                <Text style={styles.macroLbl}>CARBS</Text>
+              <View style={styles.macroBox} className="bg-zinc-100 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800">
+                <Text style={styles.macroVal} className="text-zinc-900 dark:text-zinc-100">{Math.round(recipe.carbs || 0)}g</Text>
+                <Text style={styles.macroLbl} className="text-zinc-500 dark:text-zinc-400">CARBS</Text>
               </View>
-              <View style={styles.macroBox}>
-                <Text style={styles.macroVal}>{Math.round(recipe.fats || 0)}g</Text>
-                <Text style={styles.macroLbl}>FATS</Text>
+              <View style={styles.macroBox} className="bg-zinc-100 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800">
+                <Text style={styles.macroVal} className="text-zinc-900 dark:text-zinc-100">{Math.round(recipe.fats || 0)}g</Text>
+                <Text style={styles.macroLbl} className="text-zinc-500 dark:text-zinc-400">FATS</Text>
               </View>
             </View>
 
             {rawTags.length > 0 && (
               <View style={styles.tagsContainer}>
                 {rawTags.map((t, idx) => (
-                  <View key={idx} style={styles.tag}>
-                    <Text style={styles.tagText}>#{t}</Text>
+                  <View key={idx} style={styles.tag} className="bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700">
+                    <Text style={styles.tagText} className="text-zinc-600 dark:text-zinc-300">#{t}</Text>
                   </View>
                 ))}
               </View>
             )}
 
-            <View style={styles.ingredientsBox}>
-              <Text style={styles.ingredientsTitle}>KEY INGREDIENTS</Text>
-              <Text style={styles.ingredientsList} numberOfLines={2}>
+            <View style={styles.ingredientsBox} className="bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800">
+              <Text style={styles.ingredientsTitle} className="text-zinc-500 dark:text-zinc-400">KEY INGREDIENTS</Text>
+              <Text style={styles.ingredientsList} className="text-zinc-700 dark:text-zinc-300" numberOfLines={2}>
                 {rawIngredients.join(" • ") || "Whole-food ingredients"}
               </Text>
             </View>
           </View>
         </TouchableOpacity>
 
-        <View style={styles.actionsRow}>
+        <View style={styles.actionsRow} className="bg-white dark:bg-zinc-900 border-t border-zinc-200 dark:border-zinc-800">
           <TouchableOpacity
             style={[styles.actionBtn, styles.passBtn]}
+            className="bg-red-50 dark:bg-zinc-950 border border-red-200 dark:border-red-900/50"
             onPress={handleManualDislike}
             activeOpacity={0.8}
           >
@@ -224,16 +265,19 @@ export function RecipeSwipeCard({
 
           {onAddToProtocol && (
             <TouchableOpacity
-              style={[styles.actionBtn, styles.protocolBtn]}
+              style={styles.addToListBtn}
+              className="bg-emerald-50 dark:bg-zinc-950 border border-emerald-200 dark:border-emerald-500/40"
               onPress={() => onAddToProtocol(recipe)}
               activeOpacity={0.8}
             >
-              <Ionicons name="cart-outline" size={20} color="#818cf8" />
+              <Ionicons name="add" size={16} color={colors.primaryText} />
+              <Text style={styles.addToListText} className="text-emerald-700 dark:text-emerald-400">Add to List</Text>
             </TouchableOpacity>
           )}
 
           <TouchableOpacity
             style={[styles.actionBtn, styles.likeBtn]}
+            className="bg-emerald-50 dark:bg-zinc-950 border border-emerald-200 dark:border-emerald-900/50"
             onPress={handleManualLike}
             activeOpacity={0.8}
           >
@@ -259,18 +303,17 @@ const styles = StyleSheet.create({
     width: "100%",
     maxWidth: 380,
     height: "92%",
-    backgroundColor: "#0f172a",
     borderRadius: 24,
     borderWidth: 1,
-    borderColor: "#1e293b",
     overflow: "hidden",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.5,
+    shadowOpacity: 0.15,
     shadowRadius: 20,
     elevation: 8,
     justifyContent: "space-between",
   },
+
   badge: {
     position: "absolute",
     top: 24,
@@ -306,22 +349,30 @@ const styles = StyleSheet.create({
   },
   heroVisual: {
     height: 160,
-    backgroundColor: "#020617",
+    backgroundColor: "#1A1A1A",
     borderBottomWidth: 1,
     borderBottomColor: "#1e293b",
-    justifyContent: "center",
-    alignItems: "center",
     position: "relative",
+    overflow: "hidden",
   },
-  iconCircle: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: "rgba(129, 140, 248, 0.12)",
-    borderWidth: 1,
-    borderColor: "rgba(129, 140, 248, 0.3)",
+  heroImage: {
+    ...StyleSheet.absoluteFill,
+    borderRadius: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+  },
+  fallbackVisual: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: "#1A1A1A",
     justifyContent: "center",
     alignItems: "center",
+    borderRadius: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
   },
   heroOverlay: {
     position: "absolute",
@@ -355,7 +406,6 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 19,
     fontWeight: "800",
-    color: "#f8fafc",
     lineHeight: 24,
     textTransform: "capitalize",
   },
@@ -366,35 +416,24 @@ const styles = StyleSheet.create({
   },
   macroBox: {
     flex: 1,
-    backgroundColor: "#020617",
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: "#1e293b",
     paddingVertical: 8,
     alignItems: "center",
   },
-  proteinBox: {
-    borderColor: "rgba(129, 140, 248, 0.4)",
-    backgroundColor: "rgba(129, 140, 248, 0.08)",
-  },
+  proteinBox: {},
   macroVal: {
     fontSize: 15,
     fontWeight: "900",
-    color: "#f8fafc",
   },
-  proteinVal: {
-    color: "#818cf8",
-  },
+  proteinVal: {},
   macroLbl: {
     fontSize: 8,
     fontWeight: "800",
-    color: "#64748b",
     marginTop: 2,
     letterSpacing: 0.5,
   },
-  proteinLbl: {
-    color: "#818cf8",
-  },
+  proteinLbl: {},
   tagsContainer: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -402,35 +441,28 @@ const styles = StyleSheet.create({
     marginVertical: 4,
   },
   tag: {
-    backgroundColor: "rgba(129, 140, 248, 0.12)",
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 6,
     borderWidth: 1,
-    borderColor: "rgba(129, 140, 248, 0.25)",
   },
   tagText: {
     fontSize: 10,
     fontWeight: "700",
-    color: "#818cf8",
   },
   ingredientsBox: {
-    backgroundColor: "#020617",
     borderRadius: 10,
     padding: 10,
     borderWidth: 1,
-    borderColor: "#1e293b",
   },
   ingredientsTitle: {
     fontSize: 8,
     fontWeight: "800",
-    color: "#64748b",
     letterSpacing: 1,
     marginBottom: 4,
   },
   ingredientsList: {
     fontSize: 11,
-    color: "#cbd5e1",
     lineHeight: 16,
   },
   actionsRow: {
@@ -441,9 +473,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     gap: 24,
     borderTopWidth: 1,
-    borderTopColor: "#1e293b",
-    backgroundColor: "#0f172a",
   },
+
   actionBtn: {
     width: 54,
     height: 54,
@@ -464,8 +495,26 @@ const styles = StyleSheet.create({
     width: 42,
     height: 42,
     borderRadius: 21,
-    backgroundColor: "rgba(129, 140, 248, 0.12)",
-    borderColor: "rgba(129, 140, 248, 0.3)",
+    backgroundColor: "rgba(74, 222, 128, 0.12)",
+    borderColor: "rgba(74, 222, 128, 0.3)",
+  },
+  addToListBtn: {
+    height: 48,
+    paddingHorizontal: 14,
+    borderRadius: 24,
+    backgroundColor: "rgba(74, 222, 128, 0.12)",
+    borderWidth: 1.5,
+    borderColor: "#4ade80",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
+  },
+  addToListText: {
+    color: "#4ade80",
+    fontSize: 12,
+    fontWeight: "800",
+    letterSpacing: 0.5,
   },
 });
 

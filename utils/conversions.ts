@@ -1,7 +1,7 @@
 /**
  * Body Metric Conversion Utilities
- * Standardizes imperial and metric body measurements strictly to Metric (cm & kg)
- * for uniform AI coaching algorithms and Supabase database persistence.
+ * Standardizes imperial, UK hybrid (Stone/Pounds), and metric body measurements
+ * strictly to Metric (cm & kg) for uniform AI coaching algorithms and Supabase database persistence.
  */
 
 // Exact conversion constants
@@ -9,6 +9,7 @@ export const CM_PER_INCH = 2.54;
 export const INCHES_PER_FOOT = 12;
 export const LBS_PER_KG = 2.20462262185;
 export const KG_PER_LB = 0.45359237;
+export const LBS_PER_STONE = 14;
 
 /**
  * Converts feet and inches to centimeters.
@@ -54,8 +55,31 @@ export function kgToLbs(kg: number): number {
   return Math.round(lbs * 10) / 10;
 }
 
+/**
+ * Converts Stone and Pounds to kilograms.
+ * Example: 11 st 4 lbs -> 71.7 kg
+ */
+export function stoneLbsToKg(stone: number, pounds: number): number {
+  const safeStone = Math.max(0, stone || 0);
+  const safePounds = Math.max(0, pounds || 0);
+  const totalLbs = safeStone * LBS_PER_STONE + safePounds;
+  return lbsToKg(totalLbs);
+}
+
+/**
+ * Converts kilograms to Stone and rounded Pounds.
+ * Example: 71.7 kg -> { stone: 11, pounds: 4 }
+ */
+export function kgToStoneLbs(kg: number): { stone: number; pounds: number } {
+  if (!kg || kg <= 0) return { stone: 0, pounds: 0 };
+  const totalLbs = Math.round(kg * LBS_PER_KG);
+  const stone = Math.floor(totalLbs / LBS_PER_STONE);
+  const pounds = Math.round(totalLbs % LBS_PER_STONE);
+  return { stone, pounds };
+}
+
 export type HeightUnit = 'ft' | 'cm';
-export type WeightUnit = 'kg' | 'lbs';
+export type WeightUnit = 'st' | 'kg' | 'lbs';
 
 export interface HeightInputState {
   unit: HeightUnit;
@@ -66,7 +90,9 @@ export interface HeightInputState {
 
 export interface WeightInputState {
   unit: WeightUnit;
-  value: string;
+  value: string; // Used for kg or lbs
+  stone?: string; // Used for st
+  pounds?: string; // Used for st
 }
 
 /**
@@ -86,6 +112,11 @@ export function standardizeHeight(state: HeightInputState): number {
  * Standardizes any weight input representation to numeric kilograms (kg).
  */
 export function standardizeWeight(state: WeightInputState): number {
+  if (state.unit === 'st') {
+    const stone = parseInt(state.stone || '0', 10) || 0;
+    const pounds = parseFloat(state.pounds || '0') || 0;
+    return stoneLbsToKg(stone, pounds);
+  }
   const parsed = parseFloat(state.value);
   if (isNaN(parsed) || parsed <= 0) return 0;
   if (state.unit === 'kg') {
@@ -93,3 +124,4 @@ export function standardizeWeight(state: WeightInputState): number {
   }
   return lbsToKg(parsed);
 }
+

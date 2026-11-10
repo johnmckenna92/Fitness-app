@@ -13,11 +13,12 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import Markdown from "react-native-markdown-display";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Toast from "react-native-toast-message";
 import { useAuth } from "../ctx/AuthContext";
+import { useTheme } from "../ctx/ThemeContext";
 import { fixMyMeal } from "../lib/gemini";
+import { FormattedMarkdown } from "../components/FormattedMarkdown";
 
 const SAMPLE_MEALS = [
   "2 slices pepperoni pizza & cola",
@@ -30,6 +31,7 @@ export default function FixMealScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { profile, isPro } = useAuth();
+  const { colors } = useTheme();
   const scrollViewRef = useRef<React.ElementRef<typeof ScrollView>>(null);
 
   const [input, setInput] = useState("");
@@ -93,13 +95,13 @@ export default function FixMealScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={styles.keyboardContainer}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      style={[styles.keyboardContainer, { backgroundColor: colors.background }]}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
       keyboardVerticalOffset={Platform.OS === "ios" ? 88 : 0}
     >
       <ScrollView
         ref={scrollViewRef}
-        style={styles.container}
+        style={[styles.container, { backgroundColor: colors.background }]}
         contentContainerStyle={[
           styles.contentContainer,
           { paddingBottom: Math.max(insets.bottom + 24, 40) },
@@ -110,13 +112,13 @@ export default function FixMealScreen() {
         {/* Header Hero */}
         <View style={styles.headerSection}>
           <View style={styles.titleRow}>
-            <View style={styles.iconBadge}>
-              <Ionicons name="restaurant" size={20} color="#818cf8" />
+            <View style={[styles.iconBadge, { backgroundColor: colors.surfaceSubtle, borderColor: colors.cardBorder }]}>
+              <Ionicons name="restaurant" size={20} color={colors.primary} />
             </View>
-            <Text style={styles.title}>Fix My Meal</Text>
+            <Text style={[styles.title, { color: colors.text }]}>Fix My Meal</Text>
             {isProUser ? (
-              <View style={styles.proActivePill}>
-                <Text style={styles.proActivePillText}>PRO</Text>
+              <View style={[styles.proActivePill, { backgroundColor: colors.surfaceSubtle, borderColor: colors.primary }]}>
+                <Text style={[styles.proActivePillText, { color: colors.primaryText }]}>PRO</Text>
               </View>
             ) : (
               <TouchableOpacity
@@ -129,17 +131,17 @@ export default function FixMealScreen() {
               </TouchableOpacity>
             )}
           </View>
-          <Text style={styles.subtitle}>
+          <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
             Craving something high-calorie? Re-engineer it for maximum protein,
             ideal macros, and under 20 mins prep.
           </Text>
         </View>
 
         {/* Input Card */}
-        <View style={styles.card}>
+        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
           <View style={styles.cardHeader}>
-            <Ionicons name="fast-food-outline" size={18} color="#818cf8" />
-            <Text style={styles.cardTitle}>What do you want to eat?</Text>
+            <Ionicons name="fast-food-outline" size={18} color={colors.primary} />
+            <Text style={[styles.cardTitle, { color: colors.text }]}>What do you want to eat?</Text>
           </View>
 
           {/* Quick suggestions */}
@@ -149,37 +151,55 @@ export default function FixMealScreen() {
             style={styles.chipsScroll}
             contentContainerStyle={styles.chipsContainer}
           >
-            {SAMPLE_MEALS.map((sample, idx) => (
-              <TouchableOpacity
-                key={idx}
-                style={[styles.chip, input === sample && styles.chipActive]}
-                onPress={() => handleSelectSample(sample)}
-                activeOpacity={0.7}
-              >
-                <Text
+            {SAMPLE_MEALS.map((sample, idx) => {
+              const isSelected = input === sample;
+              return (
+                <TouchableOpacity
+                  key={idx}
                   style={[
-                    styles.chipText,
-                    input === sample && styles.chipTextActive,
+                    styles.chip,
+                    {
+                      backgroundColor: isSelected ? colors.primary : colors.surfaceSubtle,
+                      borderColor: isSelected ? colors.primary : colors.borderSubtle,
+                    },
                   ]}
+                  onPress={() => handleSelectSample(sample)}
+                  activeOpacity={0.7}
                 >
-                  {sample}
-                </Text>
-              </TouchableOpacity>
-            ))}
+                  <Text
+                    style={[
+                      styles.chipText,
+                      { color: isSelected ? "#ffffff" : colors.textSecondary },
+                    ]}
+                  >
+                    {sample}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
           </ScrollView>
 
           {/* Multiline TextInput */}
-          <View style={styles.inputWrapper}>
+          <View
+            style={[
+              styles.inputWrapper,
+              {
+                backgroundColor: colors.inputBg,
+                borderColor: colors.inputBorder,
+              },
+            ]}
+          >
             <TextInput
-              style={styles.textInput}
+              style={[styles.textInput, { color: colors.text }]}
               multiline
               numberOfLines={4}
               textAlignVertical="top"
               placeholder="e.g. 2 slices of pepperoni pizza with garlic dip and a sugary soda..."
-              placeholderTextColor="#64748b"
+              placeholderTextColor={colors.textMuted}
               value={input}
               onChangeText={setInput}
               editable={!isLoading}
+              maxLength={500}
             />
             {input.length > 0 && !isLoading && (
               <TouchableOpacity
@@ -187,7 +207,7 @@ export default function FixMealScreen() {
                 onPress={() => setInput("")}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
-                <Ionicons name="close-circle" size={18} color="#64748b" />
+                <Ionicons name="close-circle" size={18} color={colors.textMuted} />
               </TouchableOpacity>
             )}
           </View>
@@ -197,6 +217,7 @@ export default function FixMealScreen() {
             <TouchableOpacity
               style={[
                 styles.submitButton,
+                { backgroundColor: colors.primary },
                 (isLoading || input.trim().length === 0) &&
                   styles.submitButtonDisabled,
               ]}
@@ -206,15 +227,15 @@ export default function FixMealScreen() {
             >
               {isLoading ? (
                 <>
-                  <ActivityIndicator size="small" color="#020617" />
-                  <Text style={styles.submitButtonText}>
+                  <ActivityIndicator size="small" color="#ffffff" />
+                  <Text style={[styles.submitButtonText, { color: "#ffffff" }]}>
                     Re-Engineering Meal...
                   </Text>
                 </>
               ) : (
                 <>
-                  <Ionicons name="restaurant" size={18} color="#020617" />
-                  <Text style={styles.submitButtonText}>Fix My Meal</Text>
+                  <Ionicons name="restaurant" size={18} color="#ffffff" />
+                  <Text style={[styles.submitButtonText, { color: "#ffffff" }]}>Fix My Meal</Text>
                 </>
               )}
             </TouchableOpacity>
@@ -238,9 +259,9 @@ export default function FixMealScreen() {
               <Ionicons
                 name="information-circle-outline"
                 size={14}
-                color="#94a3b8"
+                color={colors.textMuted}
               />
-              <Text style={styles.proHintText}>
+              <Text style={[styles.proHintText, { color: colors.textMuted }]}>
                 Pro unlocks unlimited AI Sports Nutritionist fixes.
               </Text>
             </View>
@@ -249,10 +270,10 @@ export default function FixMealScreen() {
 
         {/* Loading Indicator */}
         {isLoading && (
-          <View style={styles.loadingCard}>
-            <ActivityIndicator size="large" color="#818cf8" />
-            <Text style={styles.loadingTitle}>Re-engineering Your Meal</Text>
-            <Text style={styles.loadingSubtitle}>
+          <View style={[styles.loadingCard, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={[styles.loadingTitle, { color: colors.text }]}>Re-engineering Your Meal</Text>
+            <Text style={[styles.loadingSubtitle, { color: colors.textSecondary }]}>
               Maximizing protein & dialing in macros under 20 mins prep...
             </Text>
           </View>
@@ -260,30 +281,36 @@ export default function FixMealScreen() {
 
         {/* Results Card */}
         {result && !isLoading && (
-          <View style={styles.resultCard}>
+          <View style={[styles.resultCard, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
             <View style={styles.resultHeader}>
               <View style={styles.resultTitleGroup}>
-                <View style={styles.resultIconCircle}>
-                  <Ionicons name="checkmark-done" size={16} color="#818cf8" />
+                <View style={[styles.resultIconCircle, { backgroundColor: colors.surfaceSubtle }]}>
+                  <Ionicons name="checkmark-done" size={16} color={colors.primary} />
                 </View>
-                <Text style={styles.resultTitle}>Nutritionist Breakdown</Text>
+                <Text style={[styles.resultTitle, { color: colors.text }]}>Nutritionist Breakdown</Text>
               </View>
               <TouchableOpacity
                 onPress={handleClear}
-                style={styles.resetButton}
+                style={[styles.resetButton, { backgroundColor: colors.surfaceSubtle, borderColor: colors.borderSubtle }]}
                 activeOpacity={0.7}
               >
-                <Ionicons name="trash-outline" size={16} color="#94a3b8" />
-                <Text style={styles.resetButtonText}>Reset</Text>
+                <Ionicons name="trash-outline" size={16} color={colors.destructive} />
+                <Text style={[styles.resetButtonText, { color: colors.destructive }]}>Reset</Text>
               </TouchableOpacity>
             </View>
 
             <View style={styles.markdownWrapper}>
-              <Markdown style={obsidianMarkdownStyles}>{result}</Markdown>
+              <FormattedMarkdown>{result}</FormattedMarkdown>
             </View>
 
             <TouchableOpacity
-              style={styles.actionAgainButton}
+              style={[
+                styles.actionAgainButton,
+                {
+                  backgroundColor: colors.surfaceSubtle,
+                  borderColor: colors.cardBorder,
+                },
+              ]}
               onPress={() => {
                 setInput("");
                 setResult(null);
@@ -291,8 +318,8 @@ export default function FixMealScreen() {
               }}
               activeOpacity={0.7}
             >
-              <Ionicons name="refresh" size={16} color="#818cf8" />
-              <Text style={styles.actionAgainButtonText}>Fix Another Meal</Text>
+              <Ionicons name="refresh" size={16} color={colors.primaryText} />
+              <Text style={[styles.actionAgainButtonText, { color: colors.primaryText }]}>Fix Another Meal</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -311,6 +338,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#020617",
   },
   contentContainer: {
+    flexGrow: 1,
     paddingHorizontal: 20,
     paddingTop: 16,
   },
@@ -339,15 +367,15 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
   },
   proActivePill: {
-    backgroundColor: "#1e293b",
-    borderColor: "#818cf8",
+    backgroundColor: "rgba(74, 222, 128, 0.15)",
+    borderColor: "#4ade80",
     borderWidth: 1,
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 12,
   },
   proActivePillText: {
-    color: "#818cf8",
+    color: "#4ade80",
     fontSize: 10,
     fontWeight: "bold",
     letterSpacing: 0.5,
@@ -409,8 +437,8 @@ const styles = StyleSheet.create({
     borderColor: "#334155",
   },
   chipActive: {
-    backgroundColor: "#312e81",
-    borderColor: "#818cf8",
+    backgroundColor: "rgba(74, 222, 128, 0.15)",
+    borderColor: "#4ade80",
   },
   chipText: {
     color: "#94a3b8",
@@ -418,17 +446,17 @@ const styles = StyleSheet.create({
     fontWeight: "500",
   },
   chipTextActive: {
-    color: "#f8fafc",
+    color: "#4ade80",
   },
   inputWrapper: {
     position: "relative",
     marginBottom: 16,
   },
   textInput: {
-    backgroundColor: "#020617",
+    backgroundColor: "#0a0a0a",
     color: "#f8fafc",
     borderWidth: 1,
-    borderColor: "#334155",
+    borderColor: "#404040",
     borderRadius: 12,
     padding: 14,
     paddingRight: 36,
@@ -443,7 +471,7 @@ const styles = StyleSheet.create({
   },
   submitButton: {
     flexDirection: "row",
-    backgroundColor: "#818cf8",
+    backgroundColor: "#4ade80",
     paddingVertical: 14,
     paddingHorizontal: 20,
     borderRadius: 12,
@@ -455,7 +483,7 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   submitButtonText: {
-    color: "#020617",
+    color: "#0a0a0a",
     fontSize: 16,
     fontWeight: "bold",
   },
@@ -577,150 +605,14 @@ const styles = StyleSheet.create({
     marginTop: 18,
     paddingVertical: 12,
     borderWidth: 1,
-    borderColor: "#312e81",
+    borderColor: "#4ade80",
     borderRadius: 10,
-    backgroundColor: "#1e1b4b",
+    backgroundColor: "rgba(74, 222, 128, 0.12)",
   },
   actionAgainButtonText: {
-    color: "#818cf8",
+    color: "#4ade80",
     fontSize: 14,
     fontWeight: "600",
-  },
-});
-
-/**
- * Obsidian styling stylesheet for react-native-markdown-display.
- * Strictly follows dark theme: #f8fafc body, #818cf8 headings, Obsidian styling accents.
- */
-const obsidianMarkdownStyles = StyleSheet.create({
-  body: {
-    color: "#f8fafc",
-    fontSize: 15,
-    lineHeight: 24,
-  },
-  heading1: {
-    color: "#818cf8",
-    fontSize: 22,
-    fontWeight: "bold",
-    marginTop: 18,
-    marginBottom: 8,
-    letterSpacing: 0.3,
-  },
-  heading2: {
-    color: "#818cf8",
-    fontSize: 18,
-    fontWeight: "bold",
-    marginTop: 16,
-    marginBottom: 8,
-    letterSpacing: 0.2,
-  },
-  heading3: {
-    color: "#818cf8",
-    fontSize: 16,
-    fontWeight: "600",
-    marginTop: 12,
-    marginBottom: 6,
-  },
-  paragraph: {
-    color: "#f8fafc",
-    marginTop: 4,
-    marginBottom: 8,
-    lineHeight: 22,
-  },
-  text: {
-    color: "#f8fafc",
-  },
-  strong: {
-    color: "#ffffff",
-    fontWeight: "bold",
-  },
-  em: {
-    color: "#cbd5e1",
-    fontStyle: "italic",
-  },
-  bullet_list: {
-    marginVertical: 4,
-  },
-  bullet_list_icon: {
-    color: "#818cf8",
-    marginLeft: 4,
-    marginRight: 8,
-  },
-  bullet_list_content: {
-    flex: 1,
-    color: "#f8fafc",
-  },
-  ordered_list: {
-    marginVertical: 4,
-  },
-  ordered_list_icon: {
-    color: "#818cf8",
-    marginLeft: 4,
-    marginRight: 8,
-  },
-  list_item: {
-    flexDirection: "row",
-    justifyContent: "flex-start",
-    marginVertical: 3,
-  },
-  code_inline: {
-    backgroundColor: "#020617",
-    color: "#a5b4fc",
-    borderWidth: 1,
-    borderColor: "#1e293b",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    fontSize: 13,
-  },
-  code_block: {
-    backgroundColor: "#020617",
-    borderColor: "#1e293b",
-    borderWidth: 1,
-    borderRadius: 8,
-    padding: 12,
-    color: "#f8fafc",
-    marginVertical: 8,
-  },
-  fence: {
-    backgroundColor: "#020617",
-    borderColor: "#1e293b",
-    borderWidth: 1,
-    borderRadius: 8,
-    padding: 12,
-    color: "#f8fafc",
-    marginVertical: 8,
-  },
-  blockquote: {
-    backgroundColor: "#020617",
-    borderLeftColor: "#818cf8",
-    borderLeftWidth: 4,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 4,
-    marginVertical: 8,
-  },
-  hr: {
-    backgroundColor: "#334155",
-    height: 1,
-    marginVertical: 14,
-  },
-  table: {
-    borderWidth: 1,
-    borderColor: "#334155",
-    borderRadius: 6,
-    marginVertical: 8,
-  },
-  th: {
-    backgroundColor: "#1e293b",
-    padding: 8,
-    color: "#818cf8",
-    fontWeight: "bold",
-  },
-  td: {
-    padding: 8,
-    borderColor: "#334155",
-    color: "#f8fafc",
   },
 });
 

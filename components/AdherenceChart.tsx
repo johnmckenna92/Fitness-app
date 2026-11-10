@@ -51,7 +51,7 @@ export function AdherenceChart({ data, isPro, onUnlock }: AdherenceChartProps) {
         <View style={styles.lockOverlay}>
           <View style={styles.lockContent}>
             <View style={styles.lockIconContainer}>
-              <Ionicons name="lock-closed" size={22} color="#818cf8" />
+              <Ionicons name="lock-closed" size={22} color="#4ade80" />
             </View>
             <Text style={styles.lockTitle}>HISTORICAL TELEMETRY LOCKED</Text>
             <Text style={styles.lockMessage}>
@@ -74,13 +74,13 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: "#1e293b",
-    backgroundColor: "#0f172a",
+    borderColor: "#262626",
+    backgroundColor: "#171717",
   },
   chartContainer: { padding: 16 },
   chartLegend: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 14 },
   legendItem: { flexDirection: "row", alignItems: "center", gap: 6 },
-  legendDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: "#818cf8" },
+  legendDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: "#4ade80" },
   legendText: { fontSize: 11, fontWeight: "600", color: "#94a3b8" },
   adherenceAverage: { fontSize: 11, fontWeight: "700", color: "#10b981" },
   barsArea: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end", height: 110, paddingVertical: 4 },
@@ -88,21 +88,21 @@ const styles = StyleSheet.create({
   barTrack: {
     width: 14,
     height: 80,
-    backgroundColor: "#020617",
+    backgroundColor: "#0a0a0a",
     borderRadius: 6,
     justifyContent: "flex-end",
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: "#1e293b",
+    borderColor: "#262626",
   },
-  barFill: { backgroundColor: "#818cf8", width: "100%", borderRadius: 6 },
+  barFill: { backgroundColor: "#4ade80", width: "100%", borderRadius: 6 },
   barDayText: { fontSize: 10, fontWeight: "700", color: "#94a3b8", marginTop: 6 },
   barValText: { fontSize: 9, fontWeight: "600", color: "#64748b", marginTop: 2 },
-  chartFooter: { borderTopWidth: 1, borderTopColor: "#1e293b", paddingTop: 10, marginTop: 12 },
+  chartFooter: { borderTopWidth: 1, borderTopColor: "#262626", paddingTop: 10, marginTop: 12 },
   chartFooterText: { fontSize: 10, color: "#64748b", textAlign: "center" },
   lockOverlay: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: "rgba(2, 6, 23, 0.94)",
+    backgroundColor: "rgba(10, 10, 10, 0.94)",
     justifyContent: "center",
     alignItems: "center",
     paddingHorizontal: 20,
@@ -112,15 +112,15 @@ const styles = StyleSheet.create({
     width: 42,
     height: 42,
     borderRadius: 21,
-    backgroundColor: "rgba(129, 140, 248, 0.15)",
+    backgroundColor: "rgba(74, 222, 128, 0.15)",
     borderWidth: 1,
-    borderColor: "#818cf8",
+    borderColor: "#4ade80",
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 8,
   },
   lockTitle: { fontSize: 12, fontWeight: "800", color: "#f8fafc", letterSpacing: 0.8, marginBottom: 4, textAlign: "center" },
   lockMessage: { fontSize: 10, lineHeight: 15, color: "#94a3b8", textAlign: "center", marginBottom: 12 },
-  unlockButton: { backgroundColor: "#818cf8", paddingVertical: 8, paddingHorizontal: 14, borderRadius: 6 },
-  unlockButtonText: { color: "#020617", fontSize: 11, fontWeight: "800", letterSpacing: 0.5 },
+  unlockButton: { backgroundColor: "#4ade80", paddingVertical: 8, paddingHorizontal: 14, borderRadius: 6 },
+  unlockButtonText: { color: "#0a0a0a", fontSize: 11, fontWeight: "800", letterSpacing: 0.5 },
 });

@@ -13,20 +13,20 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { base64Image, mimeType = "image/jpeg" } = await req.json();
+    const { base64Image, mimeType = "image/jpeg" } = await req.json().catch(() => ({}));
 
     if (!base64Image || typeof base64Image !== "string" || base64Image.trim().length === 0) {
-      return new Response(
-        JSON.stringify({ isSafe: false, reason: "No image data provided for safety validation." }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      return Response.json(
+        { error: "No image data provided for safety validation." },
+        { status: 400, headers: corsHeaders }
       );
     }
 
     const apiKey = Deno.env.get("GEMINI_API_KEY");
     if (!apiKey) {
-      return new Response(
-        JSON.stringify({ isSafe: false, reason: "Moderation service configuration missing." }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      return Response.json(
+        { error: "Moderation service configuration missing." },
+        { status: 400, headers: corsHeaders }
       );
     }
 
@@ -35,7 +35,7 @@ Deno.serve(async (req: Request) => {
     const prompt =
       "You are a strict App Store UGC moderator. Analyze this image for nudity, sexually explicit content, extreme violence, gore, or hate symbols. If any are present, isSafe is false and provide a brief reason. Otherwise, isSafe is true.";
 
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${apiKey}`;
 
     let response: Response;
     try {
@@ -58,17 +58,17 @@ Deno.serve(async (req: Request) => {
         }),
       });
     } catch (fetchErr: any) {
-      return new Response(
-        JSON.stringify({ isSafe: false, reason: `Safety check network error: ${fetchErr.message}` }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      return Response.json(
+        { error: `Safety check network error: ${fetchErr.message}` },
+        { status: 400, headers: corsHeaders }
       );
     }
 
     if (!response.ok) {
       const errorText = await response.text();
-      return new Response(
-        JSON.stringify({ isSafe: false, reason: `Safety check error: ${errorText}` }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      return Response.json(
+        { error: `Safety check error: ${errorText}` },
+        { status: 400, headers: corsHeaders }
       );
     }
 
@@ -86,15 +86,16 @@ Deno.serve(async (req: Request) => {
         ? "Image meets content safety standards."
         : "Image violates App Store safety guidelines.";
 
-    return new Response(JSON.stringify({ isSafe, reason }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-      status: 200,
-    });
-  } catch (err: any) {
-    return new Response(
-      JSON.stringify({ isSafe: false, reason: err?.message || "Safety validation failed." }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
+    return Response.json(
+      { isSafe, reason },
+      { headers: corsHeaders, status: 200 }
+    );
+  } catch (e: any) {
+    return Response.json(
+      { error: e.message || "Safety validation failed." },
+      { status: 400, headers: corsHeaders }
     );
   }
 });
+
 

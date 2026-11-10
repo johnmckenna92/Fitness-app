@@ -1,294 +1,173 @@
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
-import React from "react";
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { router, useFocusEffect } from "expo-router";
+import { Bell } from "lucide-react-native";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import {
+  AppState,
+  AppStateStatus,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { getDailyTargets, useAuth } from "../../ctx/AuthContext";
+import WidgetRenderer from "../../components/home/WidgetRenderer";
+import { useAuth } from "../../ctx/AuthContext";
+import { useTheme } from "../../ctx/ThemeContext";
+import { useAppStore } from "../../store/useAppStore";
 
 export default function CommandCenterScreen() {
   const insets = useSafeAreaInsets();
-  const { profile, isPro, isTrainingDay } = useAuth();
-  const isProUser = Boolean(isPro || profile?.is_pro || profile?.subscription_status === "pro");
+  const scrollRef = useRef<React.ElementRef<typeof ScrollView>>(null);
+  const { profile } = useAuth();
+  const { colors } = useTheme();
+  const { fetchDynamicConfig, syncHealth, isLoadingConfig } = useAppStore();
+  const [refreshing, setRefreshing] = useState(false);
 
-  const baseline = {
-    calories: profile?.target_calories || 2200,
-    protein: profile?.target_protein || 140,
-    carbs: profile?.target_carbs || 200,
-    fats: profile?.target_fats || 65,
+  useFocusEffect(
+    useCallback(() => {
+      scrollRef.current?.scrollTo({ y: 0, animated: false });
+      fetchDynamicConfig(profile?.trainer_id);
+      if (profile?.id) {
+        syncHealth(profile.id);
+      }
+    }, [profile, fetchDynamicConfig, syncHealth]),
+  );
+
+  useEffect(() => {
+    fetchDynamicConfig(profile?.trainer_id);
+    if (profile?.id) {
+      syncHealth(profile.id);
+    }
+
+    const subscription = AppState.addEventListener(
+      "change",
+      (nextAppState: AppStateStatus) => {
+        if (nextAppState === "active") {
+          fetchDynamicConfig(profile?.trainer_id);
+          if (profile?.id) {
+            syncHealth(profile.id);
+          }
+        }
+      },
+    );
+
+    return () => {
+      subscription.remove();
+    };
+  }, [profile, fetchDynamicConfig, syncHealth]);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await Promise.all([
+      fetchDynamicConfig(profile?.trainer_id),
+      profile?.id ? syncHealth(profile.id) : Promise.resolve(),
+    ]);
+    setRefreshing(false);
   };
 
-  const targets = isProUser ? getDailyTargets(profile, isTrainingDay) : baseline;
+  const clientName = profile?.full_name
+    ? profile.full_name.split(" ")[0]
+    : "Athlete";
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <View
+      style={[
+        styles.container,
+        { paddingTop: insets.top, backgroundColor: colors.background },
+      ]}
+    >
       {/* Top Header */}
       <View style={styles.header}>
         <View>
-          <Text style={styles.headerSubtitle}>COMMAND CENTER</Text>
-          <Text style={styles.headerTitle}>Discovery & Action</Text>
+          <Text style={[styles.headerSubtitle, { color: colors.primaryText }]}>
+            COMMAND CENTER
+          </Text>
+          <Text style={[styles.headerTitle, { color: colors.text }]}>
+            Welcome, {clientName}
+          </Text>
+        </View>
+
+        <View style={styles.headerActions}>
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={() => {}}
+            className="w-10 h-10 rounded-full bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 items-center justify-center mr-2"
+          >
+            <Bell size={18} color={colors.text} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={() => router.push("/chat" as any)}
+            className="w-10 h-10 rounded-full bg-emerald-500/10 border border-emerald-500/30 items-center justify-center mr-2"
+          >
+            <Ionicons name="chatbubbles-outline" size={20} color="#10b981" />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={() => router.push("/(tabs)/profile" as any)}
+            className="w-10 h-10 rounded-full bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 items-center justify-center"
+          >
+            <Ionicons name="person-outline" size={18} color={colors.text} />
+          </TouchableOpacity>
         </View>
       </View>
 
-      <ScrollView 
-        contentContainerStyle={styles.scroll} 
+      {/* Dynamic Widget Registry Engine */}
+      <ScrollView
+        ref={scrollRef}
+        contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing || isLoadingConfig}
+            onRefresh={onRefresh}
+            tintColor="#10b981"
+          />
+        }
       >
-        {/* 1. The Daily Blueprint (Static Targets, Clean & Tracker-Free) */}
-        <View style={styles.blueprintCard}>
-          <View style={styles.blueprintHeaderRow}>
-            <Text style={styles.blueprintBadge}>DAILY BLUEPRINT</Text>
-            {isProUser && (
-              <View style={styles.proPill}>
-                <Text style={styles.proPillText}>{isTrainingDay ? "TRAINING" : "REST"}</Text>
-              </View>
-            )}
-          </View>
-          <View style={styles.targetRow}>
-            <Text style={styles.targetIcon}>🎯</Text>
-            <Text style={styles.targetText}>
-              {targets.calories} kcal
-            </Text>
-            <Text style={styles.targetDivider}>|</Text>
-            <Text style={styles.targetText}>
-              {targets.protein}g P
-            </Text>
-            <Text style={styles.targetDivider}>|</Text>
-            <Text style={styles.targetText}>
-              {targets.carbs}g C
-            </Text>
-            <Text style={styles.targetDivider}>|</Text>
-            <Text style={styles.targetText}>
-              {targets.fats}g F
-            </Text>
-          </View>
-        </View>
-
-        {/* 2. AI Coach Hero Widget */}
-        <TouchableOpacity 
-          style={styles.heroCard}
-          activeOpacity={0.85}
-          onPress={() => router.push("/chat" as any)}
-        >
-          <View style={styles.heroTopRow}>
-            <View style={styles.heroIconBox}>
-              <Ionicons name="chatbubbles" size={32} color="#818cf8" />
-            </View>
-            <View style={styles.heroArrowBox}>
-              <Ionicons name="arrow-forward" size={18} color="#818cf8" />
-            </View>
-          </View>
-          <Text style={styles.heroTitle}>Ask your AI Coach</Text>
-          <Text style={styles.heroSub}>
-            Real-time workout calibration, personalized nutrition recommendations, and rapid meal guidance.
-          </Text>
-        </TouchableOpacity>
-
-        {/* 3. The Tool Grid (Spacious 2-column flex grid for secondary tools) */}
-        <View style={styles.gridContainer}>
-          <TouchableOpacity 
-            style={styles.gridCard}
-            activeOpacity={0.85}
-            onPress={() => router.push("/scanner" as any)}
-          >
-            <View style={[styles.gridIconBox, styles.scannerIconBox]}>
-              <Ionicons name="scan" size={30} color="#38bdf8" />
-            </View>
-            <Text style={styles.gridTitle}>Ingredient Scanner</Text>
-            <Text style={styles.gridSubtitle}>AI Vision Analysis</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={styles.gridCard}
-            activeOpacity={0.85}
-            onPress={() => router.push("/fix-meal" as any)}
-          >
-            <View style={[styles.gridIconBox, styles.fixIconBox]}>
-              <Ionicons name="restaurant" size={28} color="#c084fc" />
-            </View>
-            <Text style={styles.gridTitle}>Fix Meal</Text>
-            <Text style={styles.gridSubtitle}>Macro Re-engineer</Text>
-          </TouchableOpacity>
-        </View>
+        <WidgetRenderer />
       </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { 
-    flex: 1, 
-    backgroundColor: "#020617",
+  container: {
+    flex: 1,
   },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: 24,
-    paddingTop: 16,
-    paddingBottom: 20,
+    paddingHorizontal: 20,
+    paddingTop: 14,
+    paddingBottom: 16,
   },
-  headerSubtitle: { 
-    fontSize: 11, 
-    fontWeight: "800", 
-    color: "#818cf8", 
-    letterSpacing: 1.5,
-  },
-  headerTitle: { 
-    fontSize: 26, 
-    fontWeight: "800", 
-    color: "#f8fafc",
-    marginTop: 4,
-    letterSpacing: -0.5,
-  },
-  profileBtn: { 
-    padding: 4,
-  },
-  scroll: { 
-    paddingHorizontal: 24,
-    paddingTop: 8,
-    gap: 20,
-    paddingBottom: 48,
-  },
-  blueprintCard: {
-    backgroundColor: "#1e293b",
-    borderRadius: 24,
-    padding: 24,
-    borderWidth: 1,
-    borderColor: "#334155",
-  },
-  blueprintHeaderRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 14,
-  },
-  blueprintBadge: {
+  headerSubtitle: {
     fontSize: 11,
     fontWeight: "800",
-    color: "#94a3b8",
-    letterSpacing: 1.2,
+    color: "#10b981",
+    letterSpacing: 1.5,
   },
-  proPill: {
-    backgroundColor: "#020617",
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#818cf8",
-  },
-  proPillText: {
-    fontSize: 10,
-    fontWeight: "800",
-    color: "#818cf8",
-    letterSpacing: 0.8,
-  },
-  targetRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  targetIcon: {
-    fontSize: 16,
-    marginRight: 2,
-  },
-  targetText: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#f8fafc",
-    letterSpacing: 0.2,
-  },
-  targetDivider: {
-    fontSize: 14,
-    fontWeight: "400",
-    color: "#475569",
-  },
-  heroCard: {
-    backgroundColor: "#1e293b",
-    borderRadius: 24,
-    padding: 28,
-    borderWidth: 1,
-    borderColor: "#334155",
-  },
-  heroTopRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: 20,
-  },
-  heroIconBox: {
-    width: 64,
-    height: 64,
-    borderRadius: 20,
-    backgroundColor: "#020617",
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "rgba(129, 140, 248, 0.4)",
-  },
-  heroArrowBox: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "#020617",
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "#334155",
-  },
-  heroTitle: {
-    fontSize: 22,
+  headerTitle: {
+    fontSize: 24,
     fontWeight: "800",
     color: "#f8fafc",
-    marginBottom: 8,
-    letterSpacing: -0.3,
+    marginTop: 2,
+    letterSpacing: -0.5,
   },
-  heroSub: {
-    fontSize: 14,
-    color: "#94a3b8",
-    lineHeight: 22,
-    fontWeight: "400",
-  },
-  gridContainer: {
+  headerActions: {
     flexDirection: "row",
-    gap: 20,
-  },
-  gridCard: {
-    flex: 1,
-    backgroundColor: "#1e293b",
-    borderRadius: 24,
-    padding: 22,
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    minHeight: 160,
-    borderWidth: 1,
-    borderColor: "#334155",
-  },
-  gridIconBox: {
-    width: 52,
-    height: 52,
-    borderRadius: 18,
-    backgroundColor: "#020617",
     alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 20,
-    borderWidth: 1,
   },
-  scannerIconBox: {
-    borderColor: "rgba(56, 189, 248, 0.3)",
-  },
-  fixIconBox: {
-    borderColor: "rgba(192, 132, 252, 0.3)",
-  },
-  gridTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#f8fafc",
-    marginBottom: 4,
-  },
-  gridSubtitle: {
-    fontSize: 12,
-    fontWeight: "500",
-    color: "#64748b",
+  scroll: {
+    paddingHorizontal: 20,
+    paddingTop: 6,
+    paddingBottom: 48,
   },
 });

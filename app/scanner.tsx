@@ -1,12 +1,13 @@
 import { Ionicons } from "@expo/vector-icons";
+import { Image } from "expo-image";
 import { supabase } from "../lib/supabase";
 import * as ImageManipulator from "expo-image-manipulator";
 import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
 import { useState } from "react";
+import { SafeAreaView } from "react-native-safe-area-context";
 import {
   ActivityIndicator,
-  Image,
   ScrollView,
   StyleSheet,
   Switch,
@@ -14,11 +15,17 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import Markdown from "react-native-markdown-display";
 import { useAuth, getDailyTargets } from "../ctx/AuthContext";
+import { useTheme } from "../ctx/ThemeContext";
+import { FormattedMarkdown } from "../components/FormattedMarkdown";
+import { setIsIntentionalBackground } from "./_layout";
+import Toast from "react-native-toast-message";
+import { syncToFatSecretPipeline } from "../services/recipeOcrService";
+
 
 export default function ScannerScreen() {
   const auth = useAuth();
+  const { colors } = useTheme();
   const { suppressLockForPicker, profile, isPro, isTrainingDay = true } = auth;
   const userProfile = profile ?? { goals: [] as string[] };
   const dailyTargets =
@@ -31,6 +38,49 @@ export default function ScannerScreen() {
   const [analysis, setAnalysis] = useState<string | null>(null);
   const [isScanning, setIsScanning] = useState(false);
   const [isDeepDive, setIsDeepDive] = useState(false);
+  const [isLoggingToFatSecret, setIsLoggingToFatSecret] = useState(false);
+  const [isLogged, setIsLogged] = useState(false);
+
+  const handleLogViaFatSecretPipeline = async () => {
+    if (!profile?.id) return;
+    setIsLoggingToFatSecret(true);
+    try {
+      const matchName = analysis?.match(/(?:Food|Recipe|Item):\s*([^\n\r]+)/i)?.[1] || "Scanned Recipe";
+      const calMatch = analysis?.match(/(\d+)\s*kcal/i)?.[1] || "420";
+      const pMatch = analysis?.match(/(\d+)\s*g\s*protein/i)?.[1] || "32";
+      const cMatch = analysis?.match(/(\d+)\s*g\s*carbs/i)?.[1] || "38";
+      const fMatch = analysis?.match(/(\d+)\s*g\s*fat/i)?.[1] || "14";
+
+      const res = await syncToFatSecretPipeline(profile.id, {
+        food_name: matchName.trim(),
+        calories: parseInt(calMatch, 10),
+        protein: parseInt(pMatch, 10),
+        carbs: parseInt(cMatch, 10),
+        fats: parseInt(fMatch, 10),
+        servings: 1,
+        serving_size: "1 portion",
+        ingredients: [],
+      });
+
+      if (res.success) {
+        setIsLogged(true);
+        Toast.show({
+          type: "success",
+          text1: "Meal Logged!",
+          text2: `Successfully synced via ${res.source === "proxy" ? "FatSecret Proxy (34.63.211.58:7777)" : "KineticLab Database"}`,
+        });
+      }
+    } catch (err: any) {
+      Toast.show({
+        type: "error",
+        text1: "Sync Error",
+        text2: err?.message || "Failed to log food.",
+      });
+    } finally {
+      setIsLoggingToFatSecret(false);
+    }
+  };
+
 
   const handleToggleDeepDive = (value: boolean) => {
     if (!isPro) {
@@ -44,6 +94,7 @@ export default function ScannerScreen() {
   const pickImage = async (useCamera: boolean = false) => {
     // Suppress biometric lock before leaving the app context
     suppressLockForPicker();
+    setIsIntentionalBackground(true);
 
     let result;
     const options: ImagePicker.ImagePickerOptions = {
@@ -142,69 +193,95 @@ export default function ScannerScreen() {
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>AI Diet Scanner</Text>
-      <Text style={styles.subtitle}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={["bottom"]}>
+      <ScrollView
+        style={[styles.container, { backgroundColor: colors.background }]}
+        contentContainerStyle={styles.content}
+      >
+      <Text style={[styles.title, { color: colors.text }]}>AI Diet Scanner</Text>
+      <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
         Upload a food photo or nutrition label to check macros against your
         targets.
       </Text>
 
       {/* Deep Dive Audit (Pro) Toggle */}
-      <View style={styles.deepDiveRow}>
+      <View
+        style={[
+          styles.deepDiveRow,
+          {
+            backgroundColor: colors.card,
+            borderColor: colors.cardBorder,
+          },
+        ]}
+      >
         <View style={styles.deepDiveTextContainer}>
-          <Text style={styles.deepDiveLabel}>Deep Dive Audit (Pro)</Text>
-          <Text style={styles.deepDiveDescription}>
+          <Text style={[styles.deepDiveLabel, { color: colors.text }]}>Deep Dive Audit (Pro)</Text>
+          <Text style={[styles.deepDiveDescription, { color: colors.textSecondary }]}>
             Audit additives, emulsifiers, seed oils & protein quality
           </Text>
         </View>
         <Switch
           value={isDeepDive}
           onValueChange={handleToggleDeepDive}
-          trackColor={{ false: "#334155", true: "#818cf8" }}
-          thumbColor={isDeepDive ? "#f8fafc" : "#94a3b8"}
-          ios_backgroundColor="#334155"
+          trackColor={{ false: colors.borderSubtle, true: colors.primary }}
+          thumbColor={isDeepDive ? "#ffffff" : colors.textMuted}
+          ios_backgroundColor={colors.borderSubtle}
           accessibilityLabel="Deep Dive Audit (Pro)"
         />
       </View>
 
       <View style={styles.buttonRow}>
         <TouchableOpacity
-          style={styles.actionButton}
+          style={[styles.actionButton, { backgroundColor: colors.primary }]}
           onPress={() => pickImage(true)}
         >
-          <Ionicons name="camera" size={24} color="#020617" />
-          <Text style={styles.actionButtonText}>Camera</Text>
+          <Ionicons name="camera" size={24} color="#ffffff" />
+          <Text style={[styles.actionButtonText, { color: "#ffffff" }]}>Camera</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={styles.actionButtonSecondary}
+          style={[
+            styles.actionButtonSecondary,
+            {
+              backgroundColor: colors.card,
+              borderColor: colors.cardBorder,
+            },
+          ]}
           onPress={() => pickImage(false)}
         >
-          <Ionicons name="images" size={24} color="#f8fafc" />
-          <Text style={styles.actionButtonTextSecondary}>Gallery</Text>
+          <Ionicons name="images" size={24} color={colors.primary} />
+          <Text style={[styles.actionButtonTextSecondary, { color: colors.text }]}>Gallery</Text>
         </TouchableOpacity>
       </View>
 
       {image && (
-        <View style={styles.imageContainer}>
+        <View
+          style={[
+            styles.imageContainer,
+            {
+              backgroundColor: colors.card,
+              borderColor: colors.cardBorder,
+            },
+          ]}
+        >
           <Image source={{ uri: image }} style={styles.image} />
 
           <TouchableOpacity
-            style={styles.analyzeButton}
+            style={[styles.analyzeButton, { backgroundColor: colors.primary }]}
             onPress={analyzeFood}
             disabled={isScanning}
           >
             {isScanning ? (
-              <ActivityIndicator color="#020617" />
+              <ActivityIndicator color="#ffffff" />
             ) : (
               <>
                 <Ionicons
                   name="scan"
                   size={20}
-                  color="#020617"
+                  color="#ffffff"
                   style={{ marginRight: 8 }}
                 />
-                <Text style={styles.analyzeButtonText}>Analyze Macros</Text>
+                <Text style={[styles.analyzeButtonText, { color: "#ffffff" }]}>Analyze Macros</Text>
               </>
             )}
           </TouchableOpacity>
@@ -213,33 +290,77 @@ export default function ScannerScreen() {
 
       {analysis && (
         <>
-          <View style={styles.resultsContainer}>
-            <Text style={styles.resultsTitle}>Analysis Results</Text>
+          <View
+            style={[
+              styles.resultsContainer,
+              {
+                backgroundColor: colors.card,
+                borderColor: colors.cardBorder,
+              },
+            ]}
+          >
+            <Text style={[styles.resultsTitle, { color: colors.text }]}>Analysis Results</Text>
             <ScrollView
               style={styles.markdownScroll}
               nestedScrollEnabled={true}
               showsVerticalScrollIndicator={false}
             >
-              <Markdown style={markdownStyles}>{analysis}</Markdown>
+              <FormattedMarkdown>{analysis}</FormattedMarkdown>
             </ScrollView>
           </View>
 
           <TouchableOpacity
-            style={styles.secondaryButton}
+            style={[
+              styles.analyzeButton,
+              {
+                backgroundColor: isLogged ? "#10b981" : colors.primary,
+                marginTop: 14,
+              },
+            ]}
+            onPress={handleLogViaFatSecretPipeline}
+            disabled={isLoggingToFatSecret || isLogged}
+            activeOpacity={0.8}
+          >
+            {isLoggingToFatSecret ? (
+              <ActivityIndicator color="#000000" />
+            ) : (
+              <>
+                <Ionicons
+                  name={isLogged ? "checkmark-circle" : "cloud-upload"}
+                  size={20}
+                  color="#000000"
+                  style={{ marginRight: 8 }}
+                />
+                <Text style={[styles.analyzeButtonText, { color: "#000000" }]}>
+                  {isLogged ? "Logged to FatSecret Pipeline" : "Log via FatSecret Pipeline"}
+                </Text>
+              </>
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.secondaryButton,
+              {
+                backgroundColor: colors.surfaceSubtle,
+                borderColor: colors.cardBorder,
+              },
+            ]}
             onPress={handleClear}
             activeOpacity={0.7}
           >
             <Ionicons
               name="refresh-outline"
               size={20}
-              color="#f8fafc"
+              color={colors.text}
               style={{ marginRight: 8 }}
             />
-            <Text style={styles.secondaryButtonText}>Clear & Scan Another</Text>
+            <Text style={[styles.secondaryButtonText, { color: colors.text }]}>Clear & Scan Another</Text>
           </TouchableOpacity>
         </>
       )}
-    </ScrollView>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
@@ -297,7 +418,7 @@ const styles = StyleSheet.create({
   actionButton: {
     flex: 1,
     flexDirection: "row",
-    backgroundColor: "#818cf8",
+    backgroundColor: "#4ade80",
     padding: 16,
     borderRadius: 12,
     alignItems: "center",
@@ -305,7 +426,7 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   actionButtonText: {
-    color: "#020617",
+    color: "#0a0a0a",
     fontSize: 16,
     fontWeight: "bold",
     marginLeft: 8,
@@ -426,7 +547,7 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: "rgba(129, 140, 248, 0.12)",
+    backgroundColor: "rgba(74, 222, 128, 0.12)",
     borderWidth: 1,
     borderColor: "#1e293b",
     justifyContent: "center",
@@ -434,16 +555,16 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   proBadge: {
-    backgroundColor: "rgba(129, 140, 248, 0.15)",
+    backgroundColor: "rgba(74, 222, 128, 0.15)",
     paddingHorizontal: 12,
     paddingVertical: 4,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: "#818cf8",
+    borderColor: "#4ade80",
     marginBottom: 16,
   },
   proBadgeText: {
-    color: "#818cf8",
+    color: "#4ade80",
     fontSize: 12,
     fontWeight: "700",
     letterSpacing: 1,
@@ -464,7 +585,7 @@ const styles = StyleSheet.create({
   },
   unlockButton: {
     flexDirection: "row",
-    backgroundColor: "#818cf8",
+    backgroundColor: "#4ade80",
     paddingVertical: 16,
     paddingHorizontal: 24,
     borderRadius: 12,
@@ -473,145 +594,8 @@ const styles = StyleSheet.create({
     width: "100%",
   },
   unlockButtonText: {
-    color: "#020617",
+    color: "#0a0a0a",
     fontSize: 16,
     fontWeight: "bold",
-  },
-});
-
-const markdownStyles = StyleSheet.create({
-  body: {
-    color: "#f8fafc",
-    backgroundColor: "#0f172a",
-    fontSize: 15,
-    lineHeight: 24,
-  },
-  heading1: {
-    color: "#818cf8",
-    fontSize: 22,
-    fontWeight: "bold",
-    marginTop: 16,
-    marginBottom: 8,
-  },
-  heading2: {
-    color: "#38bdf8",
-    fontSize: 20,
-    fontWeight: "bold",
-    marginTop: 18,
-    marginBottom: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    backgroundColor: "#1e293b",
-    borderRadius: 8,
-    borderLeftWidth: 4,
-    borderLeftColor: "#38bdf8",
-    letterSpacing: 0.3,
-  },
-  heading3: {
-    color: "#818cf8",
-    fontSize: 16,
-    fontWeight: "600",
-    marginTop: 12,
-    marginBottom: 6,
-  },
-  paragraph: {
-    color: "#f8fafc",
-    marginTop: 4,
-    marginBottom: 8,
-    lineHeight: 22,
-  },
-  text: {
-    color: "#f8fafc",
-  },
-  strong: {
-    color: "#f8fafc",
-    fontWeight: "bold",
-  },
-  em: {
-    color: "#cbd5e1",
-    fontStyle: "italic",
-  },
-  bullet_list: {
-    marginVertical: 4,
-  },
-  bullet_list_icon: {
-    color: "#818cf8",
-    marginLeft: 4,
-    marginRight: 8,
-  },
-  bullet_list_content: {
-    flex: 1,
-    color: "#f8fafc",
-  },
-  ordered_list_icon: {
-    color: "#818cf8",
-    marginLeft: 4,
-    marginRight: 8,
-  },
-  list_item: {
-    flexDirection: "row",
-    justifyContent: "flex-start",
-    marginVertical: 2,
-  },
-  code_inline: {
-    backgroundColor: "#0f172a",
-    color: "#818cf8",
-    borderWidth: 1,
-    borderColor: "#1e293b",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  code_block: {
-    backgroundColor: "#0f172a",
-    borderColor: "#1e293b",
-    borderWidth: 1,
-    borderRadius: 8,
-    padding: 12,
-    color: "#f8fafc",
-  },
-  fence: {
-    backgroundColor: "#0f172a",
-    borderColor: "#1e293b",
-    borderWidth: 1,
-    borderRadius: 8,
-    padding: 12,
-    color: "#f8fafc",
-  },
-  blockquote: {
-    backgroundColor: "#0f172a",
-    borderLeftColor: "#818cf8",
-    borderLeftWidth: 4,
-    paddingHorizontal: 12,
-    marginVertical: 6,
-  },
-  hr: {
-    backgroundColor: "#1e293b",
-    height: 1,
-    marginVertical: 12,
-  },
-  table: {
-    borderColor: "#1e293b",
-    borderWidth: 1,
-    backgroundColor: "#0f172a",
-    borderRadius: 6,
-  },
-  tr: {
-    borderColor: "#1e293b",
-    borderBottomWidth: 1,
-    flexDirection: "row",
-  },
-  th: {
-    color: "#818cf8",
-    padding: 8,
-    fontWeight: "bold",
-  },
-  td: {
-    color: "#f8fafc",
-    padding: 8,
-  },
-  link: {
-    color: "#818cf8",
-    textDecorationLine: "underline",
   },
 });

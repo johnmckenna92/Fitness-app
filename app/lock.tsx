@@ -1,105 +1,215 @@
-import { router } from "expo-router";
-import { useEffect } from "react";
+import React, { useState } from "react";
 import {
-  BackHandler,
+  ActivityIndicator,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
+import Toast from "react-native-toast-message";
 import { useAuth } from "../ctx/AuthContext";
+import { useTheme } from "../ctx/ThemeContext";
+import { supabase } from "../lib/supabase";
 
 export default function LockScreen() {
-  const { unlock, signOut, isLocked } = useAuth();
+  const router = useRouter();
+  const { session, refreshProfile, signOut } = useAuth();
+  const { colors, isDark } = useTheme();
+  const [isReactivating, setIsReactivating] = useState(false);
 
-  useEffect(() => {
-    const backAction = () => {
-      return true;
-    };
+  const handleReactivate = async () => {
+    if (!session?.user?.id) return;
+    setIsReactivating(true);
+    try {
+      const { error } = await supabase
+        .from("profiles")
+        .update({
+          account_status: "active",
+          trainer_id: null,
+          subscription_tier: "free",
+          subscription_status: "free",
+          is_pro: false,
+        } as any)
+        .eq("id", session.user.id);
 
-    const backHandler = BackHandler.addEventListener(
-      "hardwareBackPress",
-      backAction,
-    );
+      if (error) {
+        throw error;
+      }
 
-    return () => backHandler.remove();
-  }, []);
+      await refreshProfile();
 
-  useEffect(() => {
-    if (isLocked) {
-      unlock();
-    } else {
+      Toast.show({
+        type: "success",
+        text1: "Account Reactivated",
+        text2: "Standalone free tier active. All your historical logs are preserved.",
+      });
+
       router.replace("/(tabs)");
+    } catch (err: any) {
+      console.error("[LockScreen] Reactivation error:", err);
+      Toast.show({
+        type: "error",
+        text1: "Reactivation Failed",
+        text2: err?.message || "Please check your network and try again.",
+      });
+    } finally {
+      setIsReactivating(false);
     }
-  }, [isLocked]);
+  };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.content}>
-        <Text style={styles.title}>App Locked</Text>
-        <Text style={styles.subtitle}>
-          Please verify your identity to continue.
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <View
+        style={[
+          styles.modalCard,
+          {
+            backgroundColor: colors.surface,
+            borderColor: colors.cardBorder,
+          },
+        ]}
+      >
+        <View
+          style={[
+            styles.iconWrapper,
+            {
+              backgroundColor: isDark
+                ? "rgba(239, 68, 68, 0.15)"
+                : "rgba(239, 68, 68, 0.1)",
+              borderColor: "rgba(239, 68, 68, 0.3)",
+            },
+          ]}
+        >
+          <Ionicons name="lock-closed" size={36} color={colors.destructive} />
+        </View>
+
+        <Text style={[styles.title, { color: colors.text }]}>
+          Account Status Notice
         </Text>
 
-        <TouchableOpacity style={styles.primaryButton} onPress={unlock}>
-          <Text style={styles.primaryButtonText}>Unlock Now</Text>
+        <Text style={[styles.bodyText, { color: colors.textSecondary }]}>
+          Your account was locked by your trainer. To reactivate a standalone
+          version, click here.
+        </Text>
+
+        <TouchableOpacity
+          style={[
+            styles.reactivateButton,
+            { backgroundColor: colors.primary },
+            isReactivating && { opacity: 0.7 },
+          ]}
+          onPress={handleReactivate}
+          disabled={isReactivating}
+          activeOpacity={0.8}
+        >
+          {isReactivating ? (
+            <ActivityIndicator size="small" color="#ffffff" />
+          ) : (
+            <View style={styles.buttonInner}>
+              <Ionicons
+                name="refresh-outline"
+                size={18}
+                color="#ffffff"
+                style={{ marginRight: 8 }}
+              />
+              <Text style={styles.buttonText}>Click Here to Reactivate</Text>
+            </View>
+          )}
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.secondaryButton} onPress={signOut}>
-          <Text style={styles.secondaryButtonText}>Sign Out Instead</Text>
+        <TouchableOpacity
+          style={[styles.signOutButton, { borderColor: colors.borderSubtle }]}
+          onPress={signOut}
+          activeOpacity={0.7}
+        >
+          <Ionicons
+            name="log-out-outline"
+            size={16}
+            color={colors.textMuted}
+            style={{ marginRight: 6 }}
+          />
+          <Text style={[styles.signOutText, { color: colors.textMuted }]}>
+            Sign Out
+          </Text>
         </TouchableOpacity>
       </View>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#020617",
-  },
-  content: {
-    flex: 1,
     justifyContent: "center",
     alignItems: "center",
     padding: 24,
   },
+  modalCard: {
+    width: "100%",
+    maxWidth: 400,
+    borderRadius: 24,
+    borderWidth: 1,
+    padding: 28,
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  iconWrapper: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    borderWidth: 1.5,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 20,
+  },
   title: {
-    color: "#f8fafc",
-    fontSize: 28,
-    fontWeight: "bold",
+    fontSize: 20,
+    fontWeight: "800",
+    letterSpacing: -0.3,
     marginBottom: 12,
-  },
-  subtitle: {
-    color: "#94a3b8",
-    fontSize: 16,
     textAlign: "center",
-    marginBottom: 48,
   },
-  primaryButton: {
-    backgroundColor: "#818cf8",
-    paddingVertical: 16,
-    paddingHorizontal: 32,
-    borderRadius: 12,
+  bodyText: {
+    fontSize: 15,
+    lineHeight: 22,
+    textAlign: "center",
+    marginBottom: 24,
+  },
+  reactivateButton: {
     width: "100%",
+    height: 50,
+    borderRadius: 14,
+    justifyContent: "center",
     alignItems: "center",
-    marginBottom: 16,
+    marginBottom: 14,
   },
-  primaryButtonText: {
-    color: "#020617",
-    fontSize: 16,
-    fontWeight: "bold",
-  },
-  secondaryButton: {
-    paddingVertical: 16,
-    paddingHorizontal: 32,
-    width: "100%",
+  buttonInner: {
+    flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
   },
-  secondaryButtonText: {
-    color: "#ef4444",
-    fontSize: 16,
+  buttonText: {
+    color: "#ffffff",
+    fontSize: 15,
+    fontWeight: "700",
+    letterSpacing: 0.2,
+  },
+  signOutButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+  },
+  signOutText: {
+    fontSize: 13,
     fontWeight: "600",
   },
 });
+

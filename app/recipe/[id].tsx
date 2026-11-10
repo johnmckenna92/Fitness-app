@@ -5,19 +5,19 @@ import { router, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Dimensions,
   ScrollView,
+  StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { CustomAlert } from "../../components/CustomAlert";
-import { supabase } from "../../lib/supabase";
-import { normalizeRecipe } from "../../services/recipeService";
+import { fetchRecipeById } from "../../services/recipeService";
 import { Recipe } from "../../types/database";
 import { getCombinedTotalTime, getMacrosPerServing } from "../../utils/formatters";
 import { PROTOCOL_STORAGE_KEY } from "../(tabs)/recipes";
-import { styles } from "./RecipeDetail.styles";
 
 export default function RecipeDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -32,14 +32,9 @@ export default function RecipeDetailScreen() {
       if (!id) return;
       setIsLoading(true);
       try {
-        const { data, error } = await supabase
-          .from("recipes")
-          .select("*")
-          .eq("id", id)
-          .single();
-
-        if (error || !data) throw new Error(error?.message || "Recipe not found.");
-        setRecipe(normalizeRecipe(data));
+        const data = await fetchRecipeById(id);
+        if (!data) throw new Error("Recipe not found.");
+        setRecipe(data);
       } catch (err: any) {
         setAlert({
           visible: true,
@@ -81,7 +76,7 @@ export default function RecipeDetailScreen() {
   if (isLoading) {
     return (
       <View style={[styles.center, { paddingTop: insets.top }]}>
-        <ActivityIndicator size="large" color="#818cf8" />
+        <ActivityIndicator size="large" color="#4ade80" />
         <Text style={styles.loadingText}>LOADING RECIPE INTEL...</Text>
       </View>
     );
@@ -99,7 +94,8 @@ export default function RecipeDetailScreen() {
     );
   }
 
-  const coverImage = recipe.images?.[0] || recipe.image_url;
+  const rawCover = recipe.images?.[0] || recipe.image_url;
+  const coverImage = typeof rawCover === "string" && rawCover.trim().length > 0 ? rawCover.trim() : null;
   const timeFormatted = getCombinedTotalTime(recipe.prep_time, recipe.cook_time, recipe.total_time);
   const { calories, protein, carbs, fats, servings } = getMacrosPerServing(recipe);
 
@@ -133,7 +129,7 @@ export default function RecipeDetailScreen() {
           </TouchableOpacity>
 
           <View style={styles.heroBadge}>
-            <Ionicons name="time-outline" size={14} color="#818cf8" />
+            <Ionicons name="time-outline" size={14} color="#4ade80" />
             <Text style={styles.heroBadgeText}>{timeFormatted}</Text>
           </View>
         </View>
@@ -175,7 +171,7 @@ export default function RecipeDetailScreen() {
             disabled={isAdding}
             activeOpacity={0.8}
           >
-            <Ionicons name="add" size={18} color="#020617" />
+            <Ionicons name="add" size={18} color="#0a0a0a" />
             <Text style={styles.addToListBtnText}>
               {isAdding ? "SYNCING..." : "+ Add to List"}
             </Text>
@@ -184,7 +180,7 @@ export default function RecipeDetailScreen() {
 
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Ionicons name="basket-outline" size={18} color="#818cf8" />
+            <Ionicons name="basket-outline" size={18} color="#4ade80" />
             <Text style={styles.sectionTitle}>INGREDIENTS</Text>
             <Text style={styles.sectionCounter}>({recipe.ingredients.length})</Text>
           </View>
@@ -205,7 +201,7 @@ export default function RecipeDetailScreen() {
 
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Ionicons name="reader-outline" size={18} color="#818cf8" />
+            <Ionicons name="reader-outline" size={18} color="#4ade80" />
             <Text style={styles.sectionTitle}>PREPARATION METHOD</Text>
             <Text style={styles.sectionCounter}>({recipe.instructions.length} Steps)</Text>
           </View>
@@ -237,3 +233,265 @@ export default function RecipeDetailScreen() {
     </View>
   );
 }
+
+const { width: SCREEN_WIDTH } = Dimensions.get("window");
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: "#020617" },
+  scrollContent: { flexGrow: 1 },
+  center: {
+    flex: 1,
+    backgroundColor: "#020617",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 24,
+  },
+  loadingText: {
+    marginTop: 14,
+    color: "#64748b",
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 1,
+  },
+  errorTitle: {
+    marginTop: 12,
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#f8fafc",
+    letterSpacing: 0.5,
+  },
+  backBtnFallback: {
+    marginTop: 20,
+    backgroundColor: "#4ade80",
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+    borderRadius: 8,
+  },
+  backBtnText: {
+    color: "#0a0a0a",
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  heroContainer: {
+    width: SCREEN_WIDTH,
+    height: 260,
+    backgroundColor: "#0f172a",
+    position: "relative",
+  },
+  heroImage: {
+    width: "100%",
+    height: "100%",
+  },
+  heroFallback: {
+    width: "100%",
+    height: "100%",
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#090d16",
+  },
+  floatingBackBtn: {
+    position: "absolute",
+    left: 16,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(2, 6, 23, 0.75)",
+    borderWidth: 1,
+    borderColor: "#1e293b",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  heroBadge: {
+    position: "absolute",
+    bottom: 14,
+    right: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "rgba(2, 6, 23, 0.85)",
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#1e293b",
+  },
+  heroBadgeText: {
+    color: "#f8fafc",
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  header: {
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: "#1e293b",
+  },
+  title: {
+    fontSize: 22,
+    fontWeight: "900",
+    color: "#f8fafc",
+    lineHeight: 28,
+  },
+  servingsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 10,
+    gap: 10,
+  },
+  servingsTag: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "#0f172a",
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "#1e293b",
+  },
+  servingsText: {
+    color: "#94a3b8",
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  macroGrid: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 18,
+  },
+  macroCard: {
+    flex: 1,
+    backgroundColor: "#0f172a",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#1e293b",
+    paddingVertical: 10,
+    alignItems: "center",
+  },
+  macroValue: {
+    fontSize: 16,
+    fontWeight: "900",
+    color: "#f8fafc",
+  },
+  macroLabel: {
+    fontSize: 8,
+    fontWeight: "800",
+    color: "#64748b",
+    marginTop: 3,
+    letterSpacing: 0.5,
+  },
+  proteinCard: {
+    borderColor: "rgba(74, 222, 128, 0.4)",
+    backgroundColor: "rgba(74, 222, 128, 0.08)",
+  },
+  proteinValue: { color: "#4ade80" },
+  proteinLabel: { color: "#4ade80" },
+  actionSection: {
+    paddingHorizontal: 20,
+    marginTop: 16,
+  },
+  addToListBtn: {
+    backgroundColor: "#4ade80",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 14,
+    borderRadius: 12,
+    gap: 8,
+  },
+  addToListBtnText: {
+    color: "#0a0a0a",
+    fontSize: 13,
+    fontWeight: "900",
+    letterSpacing: 0.5,
+  },
+  btnDisabled: { opacity: 0.6 },
+  section: {
+    paddingHorizontal: 20,
+    marginTop: 24,
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 12,
+  },
+  sectionTitle: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: "#f8fafc",
+    letterSpacing: 0.8,
+  },
+  sectionCounter: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#64748b",
+  },
+  ingredientsBox: {
+    backgroundColor: "#171717",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#262626",
+    padding: 16,
+    gap: 12,
+  },
+  ingredientRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+  },
+  bullet: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#4ade80",
+    marginTop: 7,
+  },
+  ingredientText: {
+    flex: 1,
+    fontSize: 13,
+    color: "#cbd5e1",
+    lineHeight: 20,
+    fontWeight: "500",
+  },
+  instructionsBox: {
+    backgroundColor: "#171717",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#262626",
+    padding: 16,
+    gap: 16,
+  },
+  instructionStep: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
+  },
+  stepBadge: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: "rgba(74, 222, 128, 0.15)",
+    borderWidth: 1,
+    borderColor: "#4ade80",
+    justifyContent: "center",
+    alignItems: "center",
+    marginTop: 2,
+  },
+  stepBadgeText: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: "#4ade80",
+  },
+  stepText: {
+    flex: 1,
+    fontSize: 13,
+    color: "#cbd5e1",
+    lineHeight: 20,
+    fontWeight: "500",
+  },
+  emptyText: {
+    fontSize: 12,
+    color: "#64748b",
+    fontStyle: "italic",
+  },
+});

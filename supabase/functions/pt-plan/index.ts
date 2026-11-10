@@ -1,5 +1,3 @@
-import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
@@ -13,20 +11,20 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { imageBase64, mimeType = "image/jpeg", goals } = await req.json();
+    const { imageBase64, mimeType = "image/jpeg", goals } = await req.json().catch(() => ({}));
 
     if (!imageBase64) {
-      return new Response(
-        JSON.stringify({ error: "No image provided" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      return Response.json(
+        { error: "No image provided" },
+        { status: 400, headers: corsHeaders }
       );
     }
 
     const apiKey = Deno.env.get("GEMINI_API_KEY");
     if (!apiKey) {
-      return new Response(
-        JSON.stringify({ error: "GEMINI_API_KEY environment variable is not configured." }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      return Response.json(
+        { error: "GEMINI_API_KEY environment variable is not configured." },
+        { status: 400, headers: corsHeaders }
       );
     }
 
@@ -48,7 +46,7 @@ Extract exact numbers matching the database schema for daily targets:
 - protein: target protein in grams (number or null)
 - carbs: target carbs in grams (number or null)
 - fats: target fats in grams (number or null)
-- notes: concise text string covering all dietary constraints, rules, forbidden foods, workout guidelines, and notes.
+- pt_notes: concise text string covering all dietary constraints, rules, forbidden foods, workout guidelines, protocol notes, and coach instructions.
 
 If a range is given for any target, take the upper value.
 Respond ONLY with a valid, raw JSON object matching this exact structure:
@@ -57,10 +55,10 @@ Respond ONLY with a valid, raw JSON object matching this exact structure:
   "protein": 180,
   "carbs": 220,
   "fats": 70,
-  "notes": "string with dietary rules and guidelines"
+  "pt_notes": "string with dietary rules and guidelines"
 }`;
 
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${apiKey}`;
 
     let response: Response;
     try {
@@ -83,18 +81,18 @@ Respond ONLY with a valid, raw JSON object matching this exact structure:
         }),
       });
     } catch (fetchErr: any) {
-      return new Response(
-        JSON.stringify({ error: `Gemini Network Error: ${fetchErr.message}` }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      return Response.json(
+        { error: `Gemini Network Error: ${fetchErr.message}` },
+        { status: 400, headers: corsHeaders }
       );
     }
 
     if (!response.ok) {
       const errorText = await response.text();
       console.error("Gemini API error:", response.status, errorText);
-      return new Response(
-        JSON.stringify({ error: `AI provider error: ${errorText || response.statusText}` }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      return Response.json(
+        { error: `AI provider error: ${errorText || response.statusText}` },
+        { status: 400, headers: corsHeaders }
       );
     }
 
@@ -102,24 +100,34 @@ Respond ONLY with a valid, raw JSON object matching this exact structure:
     const rawJson = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "";
 
     if (!rawJson) {
-      return new Response(
-        JSON.stringify({ error: "Gemini returned empty response." }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      return Response.json(
+        { error: "Gemini returned empty response." },
+        { status: 400, headers: corsHeaders }
       );
     }
 
     const cleaned = rawJson.replace(/^```json\s*/i, "").replace(/\s*```$/, "").trim();
     const parsed = JSON.parse(cleaned);
 
-    return new Response(JSON.stringify(parsed), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-      status: 200,
-    });
+    const extractedNotes = parsed.pt_notes ?? parsed.protocol_notes ?? parsed.notes ?? null;
+
+    return Response.json(
+      {
+        ...parsed,
+        pt_notes: extractedNotes,
+        protocol_notes: extractedNotes,
+        notes: extractedNotes,
+      },
+      {
+        headers: corsHeaders,
+        status: 200,
+      }
+    );
   } catch (error: any) {
     console.error("pt-plan error:", error);
-    return new Response(
-      JSON.stringify({ error: error.message || "Internal server error." }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
+    return Response.json(
+      { error: error.message || "Internal server error." },
+      { headers: corsHeaders, status: 400 }
     );
   }
 });
